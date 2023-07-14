@@ -10,6 +10,17 @@ use syn::parse::{Parse, ParseStream};
 use syn::token::Comma;
 use syn::{parse_macro_input, DeriveInput, LitInt, Result};
 
+fn get_calling_crate() -> String {
+    return std::env::var("CARGO_PKG_NAME").unwrap();
+}
+
+fn app_mod_path() -> proc_macro2::TokenStream {
+    if get_calling_crate().starts_with("pyrite_") {
+        return quote! { pyrite_app };
+    }
+    return quote! { pyrite::app };
+}
+
 #[proc_macro_derive(Resource)]
 pub fn derive_resource(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
@@ -19,9 +30,10 @@ pub fn derive_resource(input: TokenStream) -> TokenStream {
 
 fn impl_derive_resource(ast: &DeriveInput) -> TokenStream {
     let name = &ast.ident;
+    let app_mod_path = app_mod_path();
 
     let gen = quote! {
-        impl pyrite::app::resource::Resource for #name {}
+        impl #app_mod_path::resource::Resource for #name {}
     };
 
     gen.into()

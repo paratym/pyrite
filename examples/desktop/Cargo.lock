@@ -557,6 +557,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pyrite"
+version = "0.1.0"
+dependencies = [
+ "pyrite_app",
+ "pyrite_desktop",
+ "pyrite_input",
+]
+
+[[package]]
 name = "pyrite_app"
 version = "0.1.0"
 dependencies = [
@@ -580,6 +589,13 @@ dependencies = [
  "pyrite_app",
  "pyrite_input",
  "winit",
+]
+
+[[package]]
+name = "pyrite_desktop_example"
+version = "1.0.0"
+dependencies = [
+ "pyrite",
 ]
 
 [[package]]

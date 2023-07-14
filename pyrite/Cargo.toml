@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 pyrite_app = { path = "../crates/pyrite_app" }
+pyrite_desktop = { path = "../crates/pyrite_desktop" }
+pyrite_input = { path = "../crates/pyrite_input" }
