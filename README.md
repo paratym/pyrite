@@ -1,7 +1,5 @@
 # Pyrite
 
----
-
 A game engine focused on heavily on modularity and extensibility, especially with the editor.
 
 ### Main Focus
