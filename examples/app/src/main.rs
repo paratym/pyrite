@@ -10,20 +10,12 @@ fn test_system() {
 }
 
 fn with_resource_system(resource: Res<TestResource>) {
-    println!("Resource value: {}", resource.value);
+    println!("Resource value: {:?}", resource.value);
 }
 
 fn with_resource_mut_system(mut resource: ResMut<TestResource>) {
     resource.value += 1;
-    println!("Mutated Resource value: {}", resource.value);
-}
-
-struct Entry {}
-
-impl EntryPoint for Entry {
-    fn run(mut application: Application) {
-        application.execute_systems();
-    }
+    println!("Mutated Resource value: {:?}", resource.value);
 }
 
 fn main() {
@@ -35,5 +27,9 @@ fn main() {
     app.add_system(with_resource_system);
     app.add_system(with_resource_mut_system);
 
-    app.run::<Entry>();
+    app.set_entry_point(|mut application| {
+        application.execute_systems();
+    });
+
+    app.run();
 }

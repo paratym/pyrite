@@ -1,7 +1,8 @@
 [package]
-name = "app_example"
+name = "vulkan_example"
 version = "1.0.0"
 edition = "2021"
 
 [dependencies]
 pyrite = { path = "../../pyrite" }
+ash = "0.37.3+1.3.251"

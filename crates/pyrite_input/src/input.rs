@@ -5,6 +5,7 @@ use std::collections::HashSet;
 #[derive(Resource)]
 pub struct Input {
     pressed_keys: HashSet<Key>,
+    held_keys: HashSet<Key>,
     down_keys: HashSet<Key>,
     released_keys: HashSet<Key>,
 }
@@ -13,6 +14,7 @@ impl Input {
     pub fn new() -> Self {
         Self {
             pressed_keys: HashSet::new(),
+            held_keys: HashSet::new(),
             down_keys: HashSet::new(),
             released_keys: HashSet::new(),
         }
@@ -21,6 +23,11 @@ impl Input {
     pub fn submit_input(&mut self, input: SubmitInput) {
         match input {
             SubmitInput::Pressed(key) => {
+                if self.down_keys.contains(&key) {
+                    self.held_keys.insert(key);
+                    return;
+                }
+
                 self.pressed_keys.insert(key);
                 self.down_keys.insert(key);
             }
@@ -33,6 +40,7 @@ impl Input {
 
     pub fn clear_inputs(&mut self) {
         self.pressed_keys.clear();
+        self.held_keys.clear();
         self.released_keys.clear();
     }
 
@@ -42,6 +50,10 @@ impl Input {
 
     pub fn is_key_pressed_with_modifiers(&self, key: Key, modifiers: &[Modifier]) -> bool {
         self.is_key_pressed(key) && self.is_modifiers_down(modifiers)
+    }
+
+    pub fn is_key_held(&self, key: Key) -> bool {
+        self.held_keys.contains(&key)
     }
 
     pub fn is_key_down_with_modifiers(&self, key: Key, modifiers: &[Modifier]) -> bool {

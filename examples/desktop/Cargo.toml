@@ -1,5 +1,5 @@
 [package]
-name = "pyrite_desktop_example"
+name = "desktop_example"
 version = "1.0.0"
 edition = "2021"
 

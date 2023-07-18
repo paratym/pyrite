@@ -1,3 +1,4 @@
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle};
 use winit::dpi::{LogicalPosition, LogicalSize};
 use winit::event_loop::EventLoop;
 use winit::window::Window as WinitWindow;
@@ -5,36 +6,28 @@ use winit::window::Window as WinitWindow;
 use pyrite_app::resource::{Res, ResMut, Resource};
 use pyrite_input::keyboard::{Key, Modifier};
 use pyrite_input::Input;
+use pyrite_vulkan::SurfaceWindow;
 
 #[derive(Resource)]
 pub struct Window {
-    config: WindowConfig,
-    winit_window: Option<WinitWindow>,
+    winit_window: WinitWindow,
     should_close: bool,
 }
 
 impl Window {
-    pub fn new(config: WindowConfig) -> Self {
-        Self {
-            config,
-            winit_window: None,
-            should_close: false,
-        }
-    }
-
-    pub(crate) fn init_window(&mut self, event_loop: &EventLoop<()>) {
+    pub fn new(event_loop: &EventLoop<()>, config: WindowConfig) -> Self {
         let primary_monitor = event_loop.primary_monitor().expect("No primary monitor");
         let video_mode = primary_monitor.video_modes().next().unwrap();
         let video_mode_size = video_mode.size();
 
-        let window_size = match self.config.state {
+        let window_size = match config.state {
             WindowState::Windowed(width, height) => LogicalSize::new(width, height),
             WindowState::Fullscreen => {
                 LogicalSize::new(video_mode_size.width, video_mode_size.height)
             }
         };
 
-        let window_position = match self.config.state {
+        let window_position = match config.state {
             WindowState::Windowed(_, _) => {
                 let monitor_size = primary_monitor.size();
                 LogicalPosition::new(
@@ -47,13 +40,13 @@ impl Window {
 
         let window_resizable = false;
 
-        let window_fullscreen = match self.config.state {
+        let window_fullscreen = match config.state {
             WindowState::Windowed(_, _) => None,
             WindowState::Fullscreen => Some(winit::window::Fullscreen::Exclusive(video_mode)),
         };
 
         let window = winit::window::WindowBuilder::new()
-            .with_title(&self.config.title)
+            .with_title(config.title)
             .with_position(window_position)
             .with_resizable(window_resizable)
             .with_inner_size(window_size)
@@ -62,17 +55,20 @@ impl Window {
             .build(event_loop)
             .unwrap();
 
-        self.winit_window = Some(window);
+        window.set_visible(true);
 
-        self.winit_window_mut().set_visible(true);
+        Self {
+            winit_window: window,
+            should_close: false,
+        }
     }
 
     pub fn fullscreen(&self) -> bool {
-        self.winit_window().fullscreen().is_some()
+        self.winit_window.fullscreen().is_some()
     }
 
     pub fn set_fullscreen(&mut self, fullscreen: bool) {
-        let primary_monitor = self.winit_window().current_monitor().unwrap();
+        let primary_monitor = self.winit_window.current_monitor().unwrap();
         let video_mode = primary_monitor.video_modes().next().unwrap();
         let video_mode_size = video_mode.size();
 
@@ -98,17 +94,17 @@ impl Window {
             false => None,
         };
 
-        self.winit_window_mut().set_fullscreen(window_fullscreen);
-        self.winit_window_mut().set_outer_position(window_position);
-        self.winit_window_mut().set_inner_size(window_size);
+        self.winit_window.set_fullscreen(window_fullscreen);
+        self.winit_window.set_outer_position(window_position);
+        self.winit_window.set_inner_size(window_size);
     }
 
     pub fn width(&self) -> u32 {
-        self.winit_window().inner_size().width
+        self.winit_window.inner_size().width
     }
 
     pub fn height(&self) -> u32 {
-        self.winit_window().inner_size().height
+        self.winit_window.inner_size().height
     }
 
     pub fn close(&mut self) {
@@ -118,13 +114,19 @@ impl Window {
     pub(crate) fn should_close(&self) -> bool {
         self.should_close
     }
+}
 
-    fn winit_window(&self) -> &WinitWindow {
-        self.winit_window.as_ref().expect("Window not initialized")
+impl SurfaceWindow for Window {}
+
+unsafe impl HasRawDisplayHandle for Window {
+    fn raw_display_handle(&self) -> RawDisplayHandle {
+        self.winit_window.raw_display_handle()
     }
+}
 
-    fn winit_window_mut(&mut self) -> &mut WinitWindow {
-        self.winit_window.as_mut().expect("Window not initialized")
+unsafe impl HasRawWindowHandle for Window {
+    fn raw_window_handle(&self) -> raw_window_handle::RawWindowHandle {
+        self.winit_window.raw_window_handle()
     }
 }
 

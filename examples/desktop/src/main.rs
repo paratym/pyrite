@@ -6,9 +6,10 @@ fn main() {
     setup_desktop_preset(
         &mut app_builder,
         DesktopConfig {
+            application_name: "Desktop Example".to_string(),
             window_config: WindowConfig::default(),
         },
     );
 
-    app_builder.run::<DesktopEntryPoint>();
+    app_builder.run();
 }

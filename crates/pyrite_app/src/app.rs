@@ -1,13 +1,15 @@
-use crate::resource::{BoxedResource, Res, Resource, ResourceBank};
-use crate::scheduler::SystemScheduler;
-use crate::system::{BoxedSystem, SystemFunction, SystemFunctionHandler};
 use std::any::TypeId;
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 
+use crate::resource::{BoxedResource, Res, Resource, ResourceBank};
+use crate::scheduler::SystemScheduler;
+use crate::system::{BoxedSystem, SystemFunction, SystemFunctionHandler};
+
 pub struct AppBuilder {
     pub(crate) resources: HashMap<TypeId, RefCell<BoxedResource>>,
     pub(crate) systems: Vec<BoxedSystem>,
+    entry_point: Option<Box<dyn FnOnce(Application)>>,
 }
 
 impl AppBuilder {
@@ -15,6 +17,7 @@ impl AppBuilder {
         Self {
             resources: HashMap::new(),
             systems: Vec::new(),
+            entry_point: None,
         }
     }
 
@@ -45,19 +48,21 @@ impl AppBuilder {
         self.systems.push(SystemFunction::new_boxed(system));
     }
 
-    pub fn run<E>(self)
+    pub fn set_entry_point<E>(&mut self, entry_point: E)
     where
-        E: EntryPoint + 'static,
+        E: FnOnce(Application) + 'static,
     {
-        E::run(Application {
+        self.entry_point = Some(Box::new(entry_point));
+    }
+
+    pub fn run(self) {
+        let app = Application {
             resource_bank: ResourceBank::new(self.resources),
             system_scheduler: SystemScheduler::new(self.systems),
-        });
-    }
-}
+        };
 
-pub trait EntryPoint {
-    fn run(application: Application);
+        self.entry_point.expect("No entry point was defined")(app);
+    }
 }
 
 pub struct Application {

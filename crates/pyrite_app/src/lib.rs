@@ -7,7 +7,7 @@ pub mod system;
 
 pub mod prelude {
     pub use crate::{
-        app::{AppBuilder, Application, EntryPoint},
+        app::{AppBuilder, Application},
         resource::{Res, ResMut, Resource},
     };
 }
