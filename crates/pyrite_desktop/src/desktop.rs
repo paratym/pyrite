@@ -3,6 +3,7 @@ use winit::event::{
 };
 use winit::event_loop::EventLoop;
 
+use pyrite_app::stage::DEFAULT_STAGE;
 use pyrite_app::AppBuilder;
 use pyrite_input::{Input, SubmitInput};
 use pyrite_vulkan::swapchain::Swapchain;
@@ -63,7 +64,7 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
                         application
                             .get_resource_mut::<Swapchain>()
                             .refresh(&*vulkan);
-                    },
+                    }
                     _ => (),
                 },
                 WinitEvent::DeviceEvent { event, .. } => match event {
@@ -82,7 +83,7 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
                     _ => (),
                 },
                 WinitEvent::MainEventsCleared => {
-                    application.execute_systems();
+                    application.execute_stage(DEFAULT_STAGE);
                     application.get_resource_mut::<Input>().clear_inputs();
                 }
                 _ => (),

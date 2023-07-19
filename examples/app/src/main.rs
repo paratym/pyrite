@@ -1,3 +1,4 @@
+use pyrite::app::stage::DEFAULT_STAGE;
 use pyrite::prelude::*;
 
 #[derive(Resource)]
@@ -28,7 +29,7 @@ fn main() {
     app.add_system(with_resource_mut_system);
 
     app.set_entry_point(|mut application| {
-        application.execute_systems();
+        application.execute_stage(DEFAULT_STAGE);
     });
 
     app.run();

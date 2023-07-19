@@ -4,21 +4,25 @@ use std::collections::HashMap;
 
 use crate::resource::{BoxedResource, Res, Resource, ResourceBank};
 use crate::scheduler::SystemScheduler;
-use crate::system::{BoxedSystem, SystemFunction, SystemFunctionHandler};
+use crate::stage::{StageBuilder, DEFAULT_STAGE};
+use crate::system::SystemFunctionHandler;
 
 pub struct AppBuilder {
     pub(crate) resources: HashMap<TypeId, RefCell<BoxedResource>>,
-    pub(crate) systems: Vec<BoxedSystem>,
+    pub(crate) stages: HashMap<String, StageBuilder>,
     entry_point: Option<Box<dyn FnOnce(Application)>>,
 }
 
 impl AppBuilder {
     pub fn new() -> Self {
-        Self {
+        let mut new = Self {
             resources: HashMap::new(),
-            systems: Vec::new(),
+            stages: HashMap::new(),
             entry_point: None,
-        }
+        };
+
+        new.create_stage(DEFAULT_STAGE, |_| {});
+        return new;
     }
 
     pub fn add_resource<R: Resource>(&mut self, resource: R) -> &mut Self {
@@ -44,8 +48,25 @@ impl AppBuilder {
         )
     }
 
+    pub fn create_stage(&mut self, name: impl ToString, stage: impl FnOnce(&mut StageBuilder)) {
+        let name = name.to_string().to_ascii_lowercase();
+        let mut stage_builder = StageBuilder::new();
+        stage(&mut stage_builder);
+
+        if self.stages.insert(name.clone(), stage_builder).is_some() {
+            panic!("Stage with name '{}' already exists", name);
+        }
+    }
+
+    pub fn get_stage(&mut self, name: impl ToString) -> &mut StageBuilder {
+        let name = name.to_string().to_ascii_lowercase();
+        self.stages
+            .get_mut(&name)
+            .expect(&format!("Stage with name '{}' does not exist", name))
+    }
+
     pub fn add_system<M: 'static>(&mut self, system: impl SystemFunctionHandler<M> + 'static) {
-        self.systems.push(SystemFunction::new_boxed(system));
+        self.get_stage(DEFAULT_STAGE).add_system(system);
     }
 
     pub fn set_entry_point<E>(&mut self, entry_point: E)
@@ -58,7 +79,12 @@ impl AppBuilder {
     pub fn run(self) {
         let app = Application {
             resource_bank: ResourceBank::new(self.resources),
-            system_scheduler: SystemScheduler::new(self.systems),
+            system_scheduler: SystemScheduler::new(
+                self.stages
+                    .into_iter()
+                    .map(|(name, stage)| (name, stage.build()))
+                    .collect(),
+            ),
         };
 
         self.entry_point.expect("No entry point was defined")(app);
@@ -79,7 +105,8 @@ impl Application {
         self.resource_bank.get_resource_mut()
     }
 
-    pub fn execute_systems(&mut self) {
-        self.system_scheduler.execute(&self.resource_bank);
+    pub fn execute_stage(&mut self, stage: impl ToString) {
+        self.system_scheduler
+            .execute_stage(stage, &self.resource_bank);
     }
 }
