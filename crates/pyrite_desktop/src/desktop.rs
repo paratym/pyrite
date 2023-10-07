@@ -1,16 +1,18 @@
-use winit::event::{
-    DeviceEvent as WinitDeviceEvent, Event as WinitEvent, WindowEvent as WinitWindowEvent,
+use winit::{
+    event::{
+        DeviceEvent as WinitDeviceEvent, Event as WinitEvent, WindowEvent as WinitWindowEvent,
+    },
+    event_loop::EventLoop,
 };
-use winit::event_loop::EventLoop;
 
-use pyrite_app::stage::DEFAULT_STAGE;
-use pyrite_app::AppBuilder;
+use pyrite_app::{stage::DEFAULT_STAGE, AppBuilder};
 use pyrite_input::{Input, SubmitInput};
-use pyrite_vulkan::swapchain::Swapchain;
-use pyrite_vulkan::{Vulkan, VulkanConfig};
+use pyrite_vulkan::{swapchain::Swapchain, Vulkan, VulkanAllocator, VulkanConfig};
 
-use crate::key::to_pyrite_key;
-use crate::window::{self, Window, WindowConfig};
+use crate::{
+    key::to_pyrite_key,
+    window::{self, Window, WindowConfig},
+};
 
 #[derive(Clone)]
 pub struct DesktopConfig {
@@ -21,6 +23,18 @@ pub struct DesktopConfig {
 
 /// Sets up the desktop resources needed for the DesktopEntryPoint using the given config.
 /// Must be setup on the same thread as the DesktopEntryPoint will be run on.
+///
+/// Adds the following resources:
+/// - Window: Managing window state and events.
+/// - Input: Managing input state and events from the window.
+/// - Vulkan: Managing vulkan and gives access to a device.
+/// - Swapchain: Managing the swapchain and links to the Window resource.
+/// - VulkanAllocator: Managing memory allocations.
+///
+/// Creates the following systems:
+/// - window::system_window_hotkeys: Handles window hotkeys such as Window Fullscreen.
+///
+/// Sets the entry point to handle control flow and runs the DEFAULT_STAGE.
 pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig) {
     let event_loop = EventLoop::new();
 
@@ -40,6 +54,9 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
 
         let swapchain = Swapchain::new(&*app_builder.get_resource::<Vulkan>());
         app_builder.add_resource(swapchain);
+
+        let allocator = VulkanAllocator::new(&*app_builder.get_resource::<Vulkan>());
+        app_builder.add_resource(allocator);
     }
 
     app_builder.add_system(window::system_window_hotkeys);
@@ -48,7 +65,8 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
         event_loop.run(move |event, _, control_flow| {
             control_flow.set_poll();
 
-            // Application will exit when the window is closed, everything should auto complete on Drop.
+            // Application will exit when the window is closed, everything should auto complete on
+            // Drop.
             if application.get_resource::<Window>().should_close() {
                 *control_flow = winit::event_loop::ControlFlow::Exit;
                 return;
@@ -84,6 +102,7 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
                 },
                 WinitEvent::MainEventsCleared => {
                     application.execute_stage(DEFAULT_STAGE);
+
                     application.get_resource_mut::<Input>().clear_inputs();
                 }
                 _ => (),

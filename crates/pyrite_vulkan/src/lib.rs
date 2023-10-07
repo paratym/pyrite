@@ -1,13 +1,46 @@
-mod vulkan;
+pub use objects::*;
 pub use vulkan::*;
 
 mod objects;
-pub use objects::*;
+mod vulkan;
 
 pub mod swapchain;
 
 pub mod prelude {
-    pub use crate::objects::Image;
-    pub use crate::swapchain::Swapchain;
-    pub use crate::vulkan::{Vulkan, VulkanConfig, VulkanDep, VulkanInstance, VulkanRef};
+    pub use crate::{
+        objects::{
+            CommandBuffer,
+            CommandPool,
+            
+            // GraphicsPipeline
+            GraphicsPipelineInfo,
+            GraphicsPipelineInfoBuilder,
+            GraphicsPipeline,
+            RenderPass,
+            Subpass,
+            Attachment,
+            AttachmentInfo,
+            AttachmentReference,
+            
+            Shader,
+            
+            // Images
+            NewImageInfo,
+            Image,
+            OwnedImage,
+            BorrowedImage,
+            
+            // Sync
+            Semaphore,
+            Fence,
+        },
+        swapchain::Swapchain,
+        vulkan::{
+            Vulkan,
+            VulkanConfig,
+            VulkanDep,
+            VulkanInstance,
+            VulkanRef,
+        },
+    };
 }

@@ -6,6 +6,9 @@ pub mod keyboard;
 pub mod prelude {
     pub use crate::{
         input::Input,
-        keyboard::{Key, Modifier},
+        keyboard::{
+            Key,
+            Modifier,
+        },
     };
 }

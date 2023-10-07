@@ -7,7 +7,10 @@ pub mod window;
 
 pub mod prelude {
     pub use crate::{
-        desktop::{setup_desktop_preset, DesktopConfig},
+        desktop::{
+            setup_desktop_preset,
+            DesktopConfig,
+        },
         window::WindowConfig,
     };
 }

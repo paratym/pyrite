@@ -1,7 +1,12 @@
 use pyrite_app_macros::generate_system_function_handlers;
 use std::any::TypeId;
 
-use crate::resource::{FromResourceBank, Res, ResMut, ResourceBank};
+use crate::resource::{
+    FromResourceBank,
+    Res,
+    ResMut,
+    ResourceBank,
+};
 
 #[derive(Debug)]
 pub enum ResourceDependency {

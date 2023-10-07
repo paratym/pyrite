@@ -1,0 +1,8 @@
+[package]
+name = "pyrite_asset"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pyrite_app = { path = "../pyrite_app" }
+notify = "6.1.1"

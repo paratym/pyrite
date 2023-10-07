@@ -1,6 +1,19 @@
-use crate::{BorrowedImage, Image, Vulkan, VulkanDep, VulkanInstance, VulkanRef};
-use ash::{extensions, vk};
+use ash::{
+    extensions,
+    vk,
+};
+
 use pyrite_app::resource::Resource;
+
+use crate::{
+    Image,
+    ImageDep,
+    Semaphore,
+    Vulkan,
+    VulkanDep,
+    VulkanInstance,
+    VulkanRef,
+};
 
 #[derive(Resource)]
 pub struct Swapchain {
@@ -11,6 +24,18 @@ pub struct Swapchain {
     swapchain_extent: vk::Extent2D,
     images: Vec<vk::Image>,
     image_views: Vec<vk::ImageView>,
+    borrowed_images: Vec<Image>,
+}
+
+/// A new swapchain is created when the swapchain is refreshed. It it primarily a struct used to
+/// return swapchain data from a function.
+struct NewSwapchain {
+    swapchain: vk::SwapchainKHR,
+    swapchain_format: vk::Format,
+    swapchain_extent: vk::Extent2D,
+    images: Vec<vk::Image>,
+    image_views: Vec<vk::ImageView>,
+    borrowed_images: Vec<Image>,
 }
 
 struct SwapchainSupport {
@@ -32,6 +57,7 @@ impl Swapchain {
             swapchain_extent: new_swapchain.swapchain_extent,
             images: new_swapchain.images,
             image_views: new_swapchain.image_views,
+            borrowed_images: new_swapchain.borrowed_images,
         }
     }
 
@@ -68,7 +94,8 @@ impl Swapchain {
             vk::PresentModeKHR::FIFO
         };
 
-        // Min image count is 1 greater than the minimum to allow for triple buffering, unless it's not supported.
+        // Min image count is 1 greater than the minimum to allow for triple buffering, unless it's
+        // not supported.
         let image_count = swapchain_support.capabilities.min_image_count + 1;
         let image_count = if swapchain_support.capabilities.max_image_count > 0 {
             image_count.min(swapchain_support.capabilities.max_image_count)
@@ -123,15 +150,76 @@ impl Swapchain {
             })
             .collect::<Vec<_>>();
 
+        let borrowed_images = images
+            .iter()
+            .zip(image_views.iter())
+            .map(|(&image, &image_view)| {
+                Image::new_borrowed(
+                    image,
+                    image_view,
+                    surface_format.format,
+                    vk::Extent3D {
+                        width: extent.width,
+                        height: extent.height,
+                        depth: 1,
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+
         NewSwapchain {
             swapchain,
             swapchain_format: surface_format.format,
             swapchain_extent: extent,
             images,
             image_views,
+            borrowed_images,
         }
     }
 
+    pub fn acquire_next_image(&self, semaphore: &Semaphore) -> (u32, bool) {
+        unsafe {
+            self.swapchain_loader
+                .acquire_next_image(
+                    self.swapchain,
+                    std::u64::MAX,
+                    semaphore.semaphore(),
+                    vk::Fence::null(),
+                )
+                .expect("Failed to acquire next image.")
+        }
+    }
+
+    pub fn present(&self, image_index: u32, wait_semaphores: &[&Semaphore]) -> anyhow::Result<()> {
+        let wait_semaphores = wait_semaphores
+            .iter()
+            .map(|semaphore| semaphore.semaphore())
+            .collect::<Vec<_>>();
+        let swapchains = [self.swapchain];
+        let image_indices = [image_index];
+
+        let present_info = vk::PresentInfoKHR::builder()
+            .wait_semaphores(&wait_semaphores)
+            .swapchains(&swapchains)
+            .image_indices(&image_indices);
+
+        let res = unsafe {
+            self.swapchain_loader
+                .queue_present(self.vulkan_dep.default_queue().queue(), &present_info)
+        };
+
+        if !res.is_ok() {
+            return Err(anyhow::anyhow!("Swapchain is out of date."));
+        }
+
+        if !res.unwrap() {
+            return Err(anyhow::anyhow!("Swapchain is out of date."));
+        }
+
+        Ok(())
+    }
+
+    /// Will destroy any borrowed images in use and create a new swapchain.
     pub fn refresh(&mut self, vulkan: VulkanRef) {
         self.destroy_old_swapchain();
 
@@ -141,9 +229,13 @@ impl Swapchain {
         self.swapchain_extent = new_swapchain.swapchain_extent;
         self.images = new_swapchain.images;
         self.image_views = new_swapchain.image_views;
+        self.borrowed_images = new_swapchain.borrowed_images;
     }
 
     fn destroy_old_swapchain(&mut self) {
+        // TODO: Make async so it has to wait for the GPU to finish using the swapchain and it's
+        // images with all references dropped. Can be made async since we can have an old reference
+        // existing since it won't directly break. Can look into an async drop queue.
         for &image_view in self.image_views.iter() {
             unsafe {
                 self.vulkan_dep
@@ -174,13 +266,8 @@ impl Swapchain {
         self.swapchain_extent
     }
 
-    pub fn image(&self, index: u32) -> Box<dyn Image> {
-        Box::new(BorrowedImage::new(
-            self.images[index as usize],
-            self.image_views[index as usize],
-            self.swapchain_format,
-            self.swapchain_extent,
-        ))
+    pub fn image(&self, index: u32) -> ImageDep {
+        self.borrowed_images[index as usize].create_dep()
     }
 }
 
@@ -220,12 +307,4 @@ impl SwapchainSupport {
             present_modes,
         }
     }
-}
-
-struct NewSwapchain {
-    swapchain: vk::SwapchainKHR,
-    swapchain_format: vk::Format,
-    swapchain_extent: vk::Extent2D,
-    images: Vec<vk::Image>,
-    image_views: Vec<vk::ImageView>,
 }

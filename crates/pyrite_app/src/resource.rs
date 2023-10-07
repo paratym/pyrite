@@ -1,8 +1,17 @@
-use std::any::TypeId;
-use std::cell::{Ref, RefCell, RefMut};
-use std::collections::HashMap;
+use std::{
+    any::TypeId,
+    cell::{
+        Ref,
+        RefCell,
+        RefMut,
+    },
+    collections::HashMap,
+};
 
-use downcast::{downcast, Any};
+use downcast::{
+    downcast,
+    Any,
+};
 
 pub use pyrite_app_macros::Resource;
 
@@ -11,7 +20,7 @@ pub(crate) type BoxedResource = Box<dyn Resource>;
 pub type Res<'rb, R> = Ref<'rb, R>;
 pub type ResMut<'rb, R> = RefMut<'rb, R>;
 
-pub trait Resource: Any + Send + Sync + 'static {}
+pub trait Resource: Any + Send + Sync {}
 downcast!(dyn Resource);
 
 pub(crate) trait FromResourceBank

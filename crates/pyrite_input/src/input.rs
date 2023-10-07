@@ -1,4 +1,7 @@
-use crate::keyboard::{Key, Modifier};
+use crate::keyboard::{
+    Key,
+    Modifier,
+};
 use pyrite_app::resource::Resource;
 use std::collections::HashSet;
 

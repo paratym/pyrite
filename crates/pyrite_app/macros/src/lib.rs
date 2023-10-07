@@ -6,9 +6,17 @@ extern crate syn;
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use quote::quote;
-use syn::parse::{Parse, ParseStream};
-use syn::token::Comma;
-use syn::{parse_macro_input, DeriveInput, LitInt, Result};
+use syn::{
+    parse::{
+        Parse,
+        ParseStream,
+    },
+    parse_macro_input,
+    token::Comma,
+    DeriveInput,
+    LitInt,
+    Result,
+};
 
 fn get_calling_crate() -> String {
     return std::env::var("CARGO_PKG_NAME").unwrap();
@@ -30,6 +38,7 @@ pub fn derive_resource(input: TokenStream) -> TokenStream {
 
 fn impl_derive_resource(ast: &DeriveInput) -> TokenStream {
     let name = &ast.ident;
+
     let app_mod_path = app_mod_path();
 
     let gen = quote! {

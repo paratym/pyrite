@@ -1,11 +1,29 @@
-use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle};
-use winit::dpi::{LogicalPosition, LogicalSize};
-use winit::event_loop::EventLoop;
-use winit::window::Window as WinitWindow;
+use raw_window_handle::{
+    HasRawDisplayHandle,
+    HasRawWindowHandle,
+    RawDisplayHandle,
+};
+use winit::{
+    dpi::{
+        LogicalPosition,
+        LogicalSize,
+    },
+    event_loop::EventLoop,
+    window::Window as WinitWindow,
+};
 
-use pyrite_app::resource::{Res, ResMut, Resource};
-use pyrite_input::keyboard::{Key, Modifier};
-use pyrite_input::Input;
+use pyrite_app::resource::{
+    Res,
+    ResMut,
+    Resource,
+};
+use pyrite_input::{
+    keyboard::{
+        Key,
+        Modifier,
+    },
+    Input,
+};
 use pyrite_vulkan::SurfaceWindow;
 
 #[derive(Resource)]
@@ -74,7 +92,8 @@ impl Window {
 
         let window_size = match fullscreen {
             true => LogicalSize::new(video_mode_size.width, video_mode_size.height),
-            // TODO: Change hard coded values to a system where the window size is scaled down an increment of the common 16:9 aspect ratios. Example: 1920x1080 -> 1600x900.
+            // TODO: Change hard coded values to a system where the window size is scaled down an
+            // increment of the common 16:9 aspect ratios. Example: 1920x1080 -> 1600x900.
             false => LogicalSize::new(1280, 720),
         };
 
@@ -158,8 +177,12 @@ pub fn system_window_hotkeys(mut window: ResMut<Window>, input: Res<Input>) {
     }
 
     if input.is_key_pressed_with_modifiers(Key::Enter, &[Modifier::Alt])
-        || input.is_key_pressed(Key::F11)
+        || input.is_key_pressed(Key::F11) 
     {
         toggle_fullscreen(&mut window);
     }
+
+    if input.is_key_pressed_with_modifiers(Key::F4, &[Modifier::Alt]) {
+        window.close();
+    } 
 }

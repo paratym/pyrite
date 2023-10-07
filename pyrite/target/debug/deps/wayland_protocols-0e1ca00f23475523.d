@@ -1,0 +1,10 @@
+/home/nathan/paratym/dev/pyrite/pyrite/target/debug/deps/wayland_protocols-0e1ca00f23475523.rmeta: /home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/lib.rs /home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/protocol_macro.rs /home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/ext.rs /home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/wp.rs /home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/xdg.rs /home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/xwayland.rs
+
+/home/nathan/paratym/dev/pyrite/pyrite/target/debug/deps/wayland_protocols-0e1ca00f23475523.d: /home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/lib.rs /home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/protocol_macro.rs /home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/ext.rs /home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/wp.rs /home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/xdg.rs /home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/xwayland.rs
+
+/home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/lib.rs:
+/home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/protocol_macro.rs:
+/home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/ext.rs:
+/home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/wp.rs:
+/home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/xdg.rs:
+/home/nathan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wayland-protocols-0.30.1/src/xwayland.rs:

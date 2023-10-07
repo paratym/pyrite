@@ -1,0 +1,11 @@
+C:\Users\nathan\paratym\dev\pyrite\pyrite\target\debug\deps\libloading-43f016a5ead85439.rmeta: C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\lib.rs C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\changelog.rs C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\os\mod.rs C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\os\windows\mod.rs C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\util.rs C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\error.rs C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\safe.rs
+
+C:\Users\nathan\paratym\dev\pyrite\pyrite\target\debug\deps\libloading-43f016a5ead85439.d: C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\lib.rs C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\changelog.rs C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\os\mod.rs C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\os\windows\mod.rs C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\util.rs C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\error.rs C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\safe.rs
+
+C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\lib.rs:
+C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\changelog.rs:
+C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\os\mod.rs:
+C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\os\windows\mod.rs:
+C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\util.rs:
+C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\error.rs:
+C:\Users\nathan\.cargo\registry\src\index.crates.io-6f17d22bba15001f\libloading-0.7.4\src\safe.rs:

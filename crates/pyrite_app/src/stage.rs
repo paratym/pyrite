@@ -1,4 +1,8 @@
-use crate::system::{BoxedSystem, SystemFunction, SystemFunctionHandler};
+use crate::system::{
+    BoxedSystem,
+    SystemFunction,
+    SystemFunctionHandler,
+};
 
 pub const DEFAULT_STAGE: &'static str = "default";
 

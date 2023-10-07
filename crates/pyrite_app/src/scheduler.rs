@@ -1,5 +1,7 @@
-use crate::resource::ResourceBank;
-use crate::system::BoxedSystem;
+use crate::{
+    resource::ResourceBank,
+    system::BoxedSystem,
+};
 use std::collections::HashMap;
 
 pub struct SystemScheduler {

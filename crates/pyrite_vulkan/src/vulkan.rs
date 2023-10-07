@@ -1,15 +1,17 @@
-use std::collections::HashMap;
-use std::ffi::{CStr, CString};
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    ffi::{CStr, CString},
+    sync::Arc,
+};
 
-use ash::Entry;
-use ash::{extensions, Device};
-use ash::{vk, Instance};
+use ash::{extensions, vk, Device, Entry, Instance};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
 use pyrite_app::resource::Resource;
 
-static DEFAULT_QUEUE: QueueConfig = QueueConfig::new(
+pub type QueueName = &'static str;
+
+pub static DEFAULT_QUEUE: QueueConfig = QueueConfig::new(
     "pyrite_vulkan::default_queue",
     1.0,
     &[
@@ -30,9 +32,9 @@ pub trait VulkanInstance: Send + Sync {
     fn surface(&self) -> &vk::SurfaceKHR;
     fn physical_device(&self) -> &PhysicalDevice;
     fn device(&self) -> &Device;
-    fn get_queue(&self, name: &str) -> &Queue;
+    fn get_queue(&self, name: QueueName) -> &Queue;
     fn default_queue(&self) -> &Queue {
-        self.get_queue(DEFAULT_QUEUE.name)
+        self.get_queue(DEFAULT_QUEUE.name())
     }
 }
 
@@ -62,7 +64,7 @@ impl VulkanInstance for Vulkan {
         self.internal_instance.device()
     }
 
-    fn get_queue(&self, name: &str) -> &Queue {
+    fn get_queue(&self, name: QueueName) -> &Queue {
         self.internal_instance.get_queue(name)
     }
 }
@@ -98,11 +100,12 @@ impl VulkanInstance for InternalVulkanInstance {
         &self.device
     }
 
-    fn get_queue(&self, name: &str) -> &Queue {
+    fn get_queue(&self, name: QueueName) -> &Queue {
         self.queues.get(name).unwrap()
     }
 }
 
+#[derive(Clone)]
 pub struct PhysicalDevice {
     physical_device: vk::PhysicalDevice,
     properties: vk::PhysicalDeviceProperties,
@@ -238,7 +241,8 @@ impl Vulkan {
                 })
                 .expect("Could not find a suitable queue family.");
 
-            // TODO: Make queues search for different families to spread performance out on the gpu and make it actually asynchronous.
+            // TODO: Make queues search for different families to spread performance out on the gpu
+            // and make it actually asynchronous.
             let queue_priorities = config
                 .queues
                 .iter()
@@ -283,8 +287,8 @@ impl Vulkan {
             internal_instance: Arc::new(InternalVulkanInstance {
                 _entry: entry,
                 instance,
-                device,
                 physical_device,
+                device,
                 surface_loader,
                 surface,
                 queues,
@@ -328,7 +332,7 @@ pub enum QueueType {
 
 pub struct QueueConfig {
     /// The queue name, used as an identifier for the queue.
-    name: &'static str,
+    name: QueueName,
 
     /// The priority of the queue. This is a value between 0.0 and 1.0.
     priority: f32,
@@ -341,16 +345,24 @@ pub struct QueueConfig {
 }
 
 impl QueueConfig {
-    pub const fn new(
-        name: &'static str,
-        priority: f32,
-        required_types: &'static [QueueType],
-    ) -> Self {
+    pub const fn new(name: QueueName, priority: f32, required_types: &'static [QueueType]) -> Self {
         Self {
             name,
             priority,
             _required_types: required_types,
         }
+    }
+
+    pub fn name(&self) -> &'static str {
+        self.name
+    }
+
+    pub fn priority(&self) -> f32 {
+        self.priority
+    }
+
+    pub fn required_types(&self) -> &'static [QueueType] {
+        self._required_types
     }
 }
 

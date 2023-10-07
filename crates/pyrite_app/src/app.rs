@@ -1,11 +1,27 @@
-use std::any::TypeId;
-use std::cell::{Ref, RefCell, RefMut};
-use std::collections::HashMap;
+use std::{
+    any::TypeId,
+    cell::{
+        Ref,
+        RefCell,
+        RefMut,
+    },
+    collections::HashMap,
+};
 
-use crate::resource::{BoxedResource, Res, Resource, ResourceBank};
-use crate::scheduler::SystemScheduler;
-use crate::stage::{StageBuilder, DEFAULT_STAGE};
-use crate::system::SystemFunctionHandler;
+use crate::{
+    resource::{
+        BoxedResource,
+        Res,
+        Resource,
+        ResourceBank,
+    },
+    scheduler::SystemScheduler,
+    stage::{
+        StageBuilder,
+        DEFAULT_STAGE,
+    },
+    system::SystemFunctionHandler,
+};
 
 pub struct AppBuilder {
     pub(crate) resources: HashMap<TypeId, RefCell<BoxedResource>>,
@@ -67,6 +83,14 @@ impl AppBuilder {
 
     pub fn add_system<M: 'static>(&mut self, system: impl SystemFunctionHandler<M> + 'static) {
         self.get_stage(DEFAULT_STAGE).add_system(system);
+    }
+
+    pub fn add_system_to_stage<M: 'static>(
+        &mut self,
+        system: impl SystemFunctionHandler<M> + 'static,
+        stage: impl ToString,
+    ) {
+        self.get_stage(stage).add_system(system);
     }
 
     pub fn set_entry_point<E>(&mut self, entry_point: E)
