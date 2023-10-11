@@ -1,35 +1,29 @@
-use raw_window_handle::{
-    HasRawDisplayHandle,
-    HasRawWindowHandle,
-    RawDisplayHandle,
-};
+use std::collections::HashSet;
+
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle};
 use winit::{
-    dpi::{
-        LogicalPosition,
-        LogicalSize,
-    },
+    dpi::{LogicalPosition, LogicalSize},
     event_loop::EventLoop,
     window::Window as WinitWindow,
 };
 
-use pyrite_app::resource::{
-    Res,
-    ResMut,
-    Resource,
-};
+use pyrite_app::resource::{Res, ResMut, Resource};
 use pyrite_input::{
-    keyboard::{
-        Key,
-        Modifier,
-    },
+    keyboard::{Key, Modifier},
     Input,
 };
 use pyrite_vulkan::SurfaceWindow;
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum WindowEvent {
+    Resized(u32, u32),
+}
 
 #[derive(Resource)]
 pub struct Window {
     winit_window: WinitWindow,
     should_close: bool,
+    events: HashSet<WindowEvent>,
 }
 
 impl Window {
@@ -78,7 +72,18 @@ impl Window {
         Self {
             winit_window: window,
             should_close: false,
+            events: HashSet::new(),
         }
+    }
+
+    pub(crate) fn push_event(&mut self, event: WindowEvent) {
+        self.events.insert(event);
+    }
+
+    pub fn resized(&self) -> Option<(u32, u32)> {
+        self.events.iter().find_map(|event| match event {
+            WindowEvent::Resized(width, height) => Some((*width, *height)),
+        })
     }
 
     pub fn fullscreen(&self) -> bool {
@@ -177,12 +182,12 @@ pub fn system_window_hotkeys(mut window: ResMut<Window>, input: Res<Input>) {
     }
 
     if input.is_key_pressed_with_modifiers(Key::Enter, &[Modifier::Alt])
-        || input.is_key_pressed(Key::F11) 
+        || input.is_key_pressed(Key::F11)
     {
         toggle_fullscreen(&mut window);
     }
 
     if input.is_key_pressed_with_modifiers(Key::F4, &[Modifier::Alt]) {
         window.close();
-    } 
+    }
 }

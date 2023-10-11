@@ -11,7 +11,7 @@ use pyrite_vulkan::{swapchain::Swapchain, Vulkan, VulkanAllocator, VulkanConfig}
 
 use crate::{
     key::to_pyrite_key,
-    window::{self, Window, WindowConfig},
+    window::{self, Window, WindowConfig, WindowEvent},
 };
 
 #[derive(Clone)]
@@ -77,7 +77,10 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
                     WinitWindowEvent::CloseRequested => {
                         *control_flow = winit::event_loop::ControlFlow::Exit
                     }
-                    WinitWindowEvent::Resized(_size) => {
+                    WinitWindowEvent::Resized(size) => {
+                        application
+                            .get_resource_mut::<Window>()
+                            .push_event(WindowEvent::Resized(size.width, size.height));
                         let vulkan = application.get_resource::<Vulkan>();
                         application
                             .get_resource_mut::<Swapchain>()

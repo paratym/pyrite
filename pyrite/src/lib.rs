@@ -14,6 +14,10 @@ pub mod vulkan {
     pub use pyrite_vulkan::*;
 }
 
+pub mod input {
+    pub use pyrite_input::*;
+}
+
 pub mod prelude {
     pub use pyrite_app::prelude::*;
     pub use pyrite_asset::prelude::*;

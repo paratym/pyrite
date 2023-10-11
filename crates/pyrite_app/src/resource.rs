@@ -1,17 +1,10 @@
 use std::{
     any::TypeId,
-    cell::{
-        Ref,
-        RefCell,
-        RefMut,
-    },
+    cell::{Ref, RefCell, RefMut},
     collections::HashMap,
 };
 
-use downcast::{
-    downcast,
-    Any,
-};
+use downcast::{downcast, Any};
 
 pub use pyrite_app_macros::Resource;
 

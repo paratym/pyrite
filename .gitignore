@@ -1,5 +1,4 @@
 **/.idea
 **/.vscode
-/target
-crates/target
-examples/*/target
+**/target
+
