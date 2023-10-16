@@ -88,6 +88,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "asset_example"
+version = "1.0.0"
+dependencies = [
+ "pyrite",
+]
+
+[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

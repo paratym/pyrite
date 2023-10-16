@@ -6,7 +6,9 @@ members = [
   "crates/pyrite_input",
   "crates/pyrite_vulkan",
   "examples/app",
+  "examples/asset",
   "examples/desktop",
   "examples/vulkan",
   "pyrite",
 ]
+
