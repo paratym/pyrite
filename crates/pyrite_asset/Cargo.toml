@@ -6,3 +6,6 @@ edition = "2021"
 [dependencies]
 pyrite_app = { path = "../pyrite_app" }
 notify = "6.1.1"
+parking_lot = "0.12.1"
+rayon = "1.8.0"
+gltf = "1.3.0"

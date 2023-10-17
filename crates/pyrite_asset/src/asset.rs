@@ -1,10 +1,21 @@
-use std::{any::Any, collections::HashMap, ops::Deref, sync::Arc};
+use std::{
+    any::Any,
+    collections::HashMap,
+    sync::{
+        atomic::{self, AtomicBool},
+        Arc,
+    },
+};
 
+use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard};
 use pyrite_app::resource::Resource;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 #[derive(Resource)]
 pub struct Assets {
     loaders: HashMap<String, Box<dyn ErasedAssetLoader>>,
+    queue: Vec<(String, Box<dyn ErasedHandle>)>,
+    pool: rayon::ThreadPool,
 }
 
 trait ErasedAssetLoader: Send + Sync {
@@ -30,8 +41,15 @@ pub trait AssetLoader: Send + Sync + 'static {
 
 impl Assets {
     pub fn new() -> Self {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(4)
+            .build()
+            .unwrap();
+
         Self {
             loaders: HashMap::new(),
+            queue: Vec::new(),
+            pool,
         }
     }
 
@@ -44,42 +62,109 @@ impl Assets {
 
     /// Load an asset from a file using the extension to determine the loader.
     /// Currently, the load is synchronous
-    pub fn load<T: 'static>(&self, file_path: impl ToString) -> Handle<T> {
-        let file_path = file_path.to_string();
-        let extension = file_path
-            .split('.')
-            .last()
-            .expect("Asset file path has no extension");
+    pub fn load<T: Send + Sync + 'static>(&mut self, file_path: impl ToString) -> Handle<T> {
+        let handle = Handle::new();
 
-        let loader = self
-            .loaders
-            .get(extension)
-            .expect("No loader for asset extension");
+        self.queue
+            .push((file_path.to_string(), handle.create_wrapper()));
 
-        let data = std::fs::read(file_path).expect("Failed to read asset file");
+        handle
+    }
 
-        let asset = loader.load(&data);
+    pub fn update(&mut self) {
+        let queue = std::mem::take(&mut self.queue);
 
-        let asset = asset
-            .downcast::<T>()
-            .expect("Failed to downcast asset to requested type");
+        let loaders = &self.loaders;
 
-        Handle {
-            inner: Arc::new(*asset),
-        }
+        let pool = &self.pool;
+
+        pool.install(|| {
+            queue.into_par_iter().for_each(|(file_path, handle)| {
+                let extension = file_path
+                    .split('.')
+                    .last()
+                    .expect("Asset file path has no extension");
+
+                let loader = loaders
+                    .get(extension)
+                    .expect("No loader for asset extension");
+
+                let data = std::fs::read(file_path).expect("Failed to read asset file");
+
+                let asset = loader.load(&data);
+
+                handle.update_asset(asset);
+            });
+        });
     }
 }
 
-/// An active asset handle, when all handles to an asset are dropped, the asset is cleaned up.
-/// Assets are by nature read-only, if a writable asset is needed, get a `RwHandle`
-pub struct Handle<T> {
-    inner: Arc<T>,
+trait ErasedHandle: Send + Sync {
+    fn is_loaded(&self) -> bool;
+    fn update_asset(&self, asset: Box<dyn Any>);
 }
 
-impl<T> Deref for Handle<T> {
-    type Target = T;
+struct HandleWrapper<T> {
+    inner: Handle<T>,
+}
 
-    fn deref(&self) -> &Self::Target {
-        &*self.inner
+impl<T: Send + Sync + 'static> ErasedHandle for HandleWrapper<T> {
+    fn is_loaded(&self) -> bool {
+        self.inner.is_loaded()
+    }
+
+    fn update_asset(&self, asset: Box<dyn Any>) {
+        self.inner.inner.asset.write().replace(
+            *asset
+                .downcast::<T>()
+                .expect("Failed to downcast asset to expected type"),
+        );
+        self.inner
+            .inner
+            .is_loaded
+            .swap(true, atomic::Ordering::Relaxed);
+    }
+}
+
+pub struct Handle<T> {
+    inner: Arc<HandleInner<T>>,
+}
+
+pub struct HandleInner<T> {
+    asset: RwLock<Option<T>>,
+    is_loaded: AtomicBool,
+}
+
+impl<T: Send + Sync + 'static> Handle<T> {
+    fn new() -> Self {
+        Self {
+            inner: Arc::new(HandleInner {
+                asset: RwLock::new(None),
+                is_loaded: AtomicBool::new(false),
+            }),
+        }
+    }
+
+    fn create_wrapper(&self) -> Box<dyn ErasedHandle> {
+        Box::new(HandleWrapper {
+            inner: Handle {
+                inner: self.inner.clone(),
+            },
+        })
+    }
+
+    pub fn is_loaded(&self) -> bool {
+        self.inner.is_loaded.load(atomic::Ordering::Relaxed)
+    }
+
+    pub fn get(&self) -> Option<MappedRwLockReadGuard<'_, T>> {
+        if self.is_loaded() {
+            Some(RwLockReadGuard::map(
+                self.inner.asset.read(),
+                |asset: &Option<T>| asset.as_ref().unwrap(),
+            ))
+        } else {
+            None
+        }
     }
 }
