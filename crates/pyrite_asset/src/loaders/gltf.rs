@@ -8,6 +8,12 @@ pub struct Gltf {
 
 pub struct GltfLoader {}
 
+impl GltfLoader {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
 impl AssetLoader for GltfLoader {
     type Asset = Gltf;
 

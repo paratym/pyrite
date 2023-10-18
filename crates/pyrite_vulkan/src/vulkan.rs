@@ -32,9 +32,9 @@ pub trait VulkanInstance: Send + Sync {
     fn surface(&self) -> &vk::SurfaceKHR;
     fn physical_device(&self) -> &PhysicalDevice;
     fn device(&self) -> &Device;
-    fn get_queue(&self, name: QueueName) -> &Queue;
+    fn queue(&self, name: QueueName) -> Option<&Queue>;
     fn default_queue(&self) -> &Queue {
-        self.get_queue(DEFAULT_QUEUE.name())
+        self.queue(DEFAULT_QUEUE.queue_name()).unwrap()
     }
 }
 
@@ -64,8 +64,8 @@ impl VulkanInstance for Vulkan {
         self.internal_instance.device()
     }
 
-    fn get_queue(&self, name: QueueName) -> &Queue {
-        self.internal_instance.get_queue(name)
+    fn queue(&self, name: QueueName) -> Option<&Queue> {
+        self.internal_instance.queue(name)
     }
 }
 
@@ -76,7 +76,7 @@ pub struct InternalVulkanInstance {
     device: Device,
     surface_loader: extensions::khr::Surface,
     surface: vk::SurfaceKHR,
-    queues: HashMap<&'static str, Queue>,
+    queues: HashMap<QueueName, Queue>,
 }
 
 impl VulkanInstance for InternalVulkanInstance {
@@ -100,8 +100,8 @@ impl VulkanInstance for InternalVulkanInstance {
         &self.device
     }
 
-    fn get_queue(&self, name: QueueName) -> &Queue {
-        self.queues.get(name).unwrap()
+    fn queue(&self, name: QueueName) -> Option<&Queue> {
+        self.queues.get(name)
     }
 }
 
@@ -204,6 +204,7 @@ impl Vulkan {
                 unsafe { instance.get_physical_device_memory_properties(device) };
             let queue_families =
                 unsafe { instance.get_physical_device_queue_family_properties(device) };
+            println!("Queue families: {:?}", queue_families);
 
             PhysicalDevice {
                 physical_device: device,
@@ -214,74 +215,13 @@ impl Vulkan {
             }
         };
 
-        let (device, queues) = {
-            let queue_family_index = physical_device
-                .queue_families
-                .iter()
-                .enumerate()
-                .find_map(|(index, properties)| {
-                    let supports_graphics =
-                        properties.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-                            && properties.queue_flags.contains(vk::QueueFlags::TRANSFER)
-                            && properties.queue_flags.contains(vk::QueueFlags::COMPUTE);
-                    let supports_surface = unsafe {
-                        surface_loader.get_physical_device_surface_support(
-                            physical_device.physical_device,
-                            index as u32,
-                            surface,
-                        )
-                    }
-                    .unwrap();
-
-                    if supports_graphics && supports_surface {
-                        Some(index as u32)
-                    } else {
-                        None
-                    }
-                })
-                .expect("Could not find a suitable queue family.");
-
-            // TODO: Make queues search for different families to spread performance out on the gpu
-            // and make it actually asynchronous.
-            let queue_priorities = config
-                .queues
-                .iter()
-                .map(|queue| queue.priority)
-                .collect::<Vec<_>>();
-            let queue_create_infos = [vk::DeviceQueueCreateInfo::builder()
-                .queue_family_index(queue_family_index)
-                .queue_priorities(&queue_priorities)
-                .build()];
-
-            let device_extensions = [ash::extensions::khr::Swapchain::name().as_ptr()];
-
-            let device_create_info = vk::DeviceCreateInfo::builder()
-                .queue_create_infos(&queue_create_infos)
-                .enabled_extension_names(&device_extensions);
-
-            let device = unsafe {
-                instance.create_device(physical_device.physical_device, &device_create_info, None)
-            }
-            .unwrap();
-
-            let queues = config
-                .queues
-                .iter()
-                .enumerate()
-                .map(|(i, queue)| {
-                    let vk_queue = unsafe { device.get_device_queue(queue_family_index, i as u32) };
-                    (
-                        queue.name,
-                        Queue {
-                            queue_family_index,
-                            queue: vk_queue,
-                        },
-                    )
-                })
-                .collect::<HashMap<_, _>>();
-
-            (device, queues)
-        };
+        let (device, queues) = Self::create_device(
+            config,
+            &physical_device,
+            &surface_loader,
+            surface,
+            &instance,
+        );
 
         Self {
             internal_instance: Arc::new(InternalVulkanInstance {
@@ -294,6 +234,125 @@ impl Vulkan {
                 queues,
             }),
         }
+    }
+
+    fn create_device(
+        config: VulkanConfig<'_>,
+        physical_device: &PhysicalDevice,
+        surface_loader: &extensions::khr::Surface,
+        surface: vk::SurfaceKHR,
+        instance: &Instance,
+    ) -> (Device, HashMap<QueueName, Queue>) {
+        // Maps queue family index to a queue.
+        let mut queue_family_indices = HashMap::<u32, Vec<QueueConfig>>::new();
+
+        // Find queue families we need and queues we need.
+        config.queues.into_iter().for_each(|queue| {
+            let queue_family_index = physical_device.queue_families.iter().enumerate().find_map(
+                |(index, properties)| {
+                    // Check if queue family has all the required types requested.
+                    if !queue.required_types().iter().all(|flag| {
+                        *flag == QueueType::Present || properties.queue_flags.contains(flag.to_vk())
+                    }) {
+                        return None;
+                    }
+
+                    // Check if queue family supports surface if present is requested.
+                    if queue.required_types().contains(&QueueType::Present) {
+                        let supports_surface = unsafe {
+                            surface_loader
+                                .get_physical_device_surface_support(
+                                    physical_device.physical_device,
+                                    index as u32,
+                                    surface,
+                                )
+                                .expect("Could not get physical device surface support.")
+                        };
+
+                        if !supports_surface {
+                            return None;
+                        }
+                    }
+
+                    // Check if the queue family has enough capacity for the queue.
+                    if queue_family_indices.contains_key(&(index as u32))
+                        && queue_family_indices.get(&(index as u32)).unwrap().len()
+                            >= properties.queue_count as usize
+                    {
+                        return None;
+                    }
+
+                    Some(index as u32)
+                },
+            );
+
+            // Add queue to queue family.
+            if let Some(queue_family_index) = queue_family_index {
+                if queue_family_indices.contains_key(&queue_family_index) {
+                    queue_family_indices
+                        .get_mut(&queue_family_index)
+                        .unwrap()
+                        .push(queue.clone());
+                } else {
+                    queue_family_indices.insert(queue_family_index, vec![queue.clone()]);
+                }
+            } else {
+                // Queue family isn't found so toss queue out.
+                println!("Queue family not found for queue: {}", queue.queue_name());
+            }
+        });
+
+        let mut queue_priorities = Vec::new();
+
+        let queue_create_infos = queue_family_indices
+            .iter()
+            .map(|(index, queues)| {
+                queue_priorities.push(
+                    queues
+                        .iter()
+                        .map(|queue| queue.priority)
+                        .collect::<Vec<_>>(),
+                );
+                vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(*index)
+                    .queue_priorities(queue_priorities.get(queue_priorities.len() - 1).unwrap())
+                    .build()
+            })
+            .collect::<Vec<_>>();
+
+        let device_extensions = [ash::extensions::khr::Swapchain::name().as_ptr()];
+
+        let device_create_info = vk::DeviceCreateInfo::builder()
+            .queue_create_infos(&queue_create_infos)
+            .enabled_extension_names(&device_extensions);
+
+        let device = unsafe {
+            instance.create_device(physical_device.physical_device, &device_create_info, None)
+        }
+        .unwrap();
+
+        let queues = queue_family_indices
+            .iter()
+            .map(|(index, queues)| {
+                queues
+                    .iter()
+                    .enumerate()
+                    .map(|(i, queue)| {
+                        let vk_queue = unsafe { device.get_device_queue(*index, i as u32) };
+                        (
+                            queue.name,
+                            Queue {
+                                queue_family_index: *index,
+                                queue: vk_queue,
+                            },
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .flatten()
+            .collect::<HashMap<_, _>>();
+
+        (device, queues)
     }
 
     pub fn create_dep(&self) -> VulkanDep {
@@ -321,8 +380,14 @@ impl<'a> VulkanConfig<'a> {
             queues: vec![&DEFAULT_QUEUE],
         }
     }
+
+    pub fn queue(mut self, queue: &'static QueueConfig) -> Self {
+        self.queues.push(queue);
+        self
+    }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum QueueType {
     Graphics = 0b00000001,
     Compute = 0b00000010,
@@ -330,6 +395,22 @@ pub enum QueueType {
     Present = 0b00001000,
 }
 
+impl QueueType {
+    pub fn as_u32(&self) -> u32 {
+        *self as u32
+    }
+
+    pub fn to_vk(&self) -> vk::QueueFlags {
+        match self {
+            Self::Graphics => vk::QueueFlags::GRAPHICS,
+            Self::Compute => vk::QueueFlags::COMPUTE,
+            Self::Transfer => vk::QueueFlags::TRANSFER,
+            Self::Present => vk::QueueFlags::empty(),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct QueueConfig {
     /// The queue name, used as an identifier for the queue.
     name: QueueName,
@@ -353,7 +434,7 @@ impl QueueConfig {
         }
     }
 
-    pub fn name(&self) -> &'static str {
+    pub fn queue_name(&self) -> &'static str {
         self.name
     }
 

@@ -158,7 +158,8 @@ pub struct OwnedImage {
 
 impl OwnedImage {
     pub fn new(vulkan: &Vulkan, vulkan_allocator: &mut dyn Allocator, info: &NewImageInfo) -> Self {
-        let mut image_create_info = vk::ImageCreateInfo::builder()
+        let queue_family_indices = info.sharing_mode.queue_family_indices_or_default(vulkan);
+        let image_create_info = vk::ImageCreateInfo::builder()
             .flags(info.flags)
             .image_type(info.image_type)
             .format(info.format)
@@ -169,16 +170,8 @@ impl OwnedImage {
             .tiling(info.tiling)
             .usage(info.usage)
             .initial_layout(info.initial_layout)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
-
-        let queue_family_indices = info.sharing_mode.queue_family_indices(vulkan);
-        if let Some(queue_family_indices) = &queue_family_indices {
-            if queue_family_indices.len() > 1 {
-                image_create_info = image_create_info
-                    .sharing_mode(vk::SharingMode::CONCURRENT)
-                    .queue_family_indices(queue_family_indices);
-            }
-        }
+            .sharing_mode(info.sharing_mode.sharing_mode())
+            .queue_family_indices(&queue_family_indices);
 
         let image = unsafe {
             vulkan
@@ -195,7 +188,7 @@ impl OwnedImage {
         unsafe {
             vulkan.device().bind_image_memory(
                 image,
-                allocation.allocation(),
+                allocation.device_memory(),
                 allocation.offset() as u64,
             )
         }

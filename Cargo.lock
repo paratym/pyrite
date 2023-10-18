@@ -1071,6 +1071,7 @@ version = "0.1.0"
 dependencies = [
  "lazy_static",
  "pyrite_app",
+ "pyrite_asset",
  "pyrite_input",
  "pyrite_vulkan",
  "raw-window-handle",

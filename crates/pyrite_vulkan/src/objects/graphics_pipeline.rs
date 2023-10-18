@@ -169,6 +169,19 @@ impl GraphicsPipelineInfoBuilder {
     }
 }
 
+impl Drop for GraphicsPipeline {
+    fn drop(&mut self) {
+        unsafe {
+            self.vulkan_dep
+                .device()
+                .destroy_pipeline(self.pipeline, None);
+            self.vulkan_dep
+                .device()
+                .destroy_pipeline_layout(self.pipeline_layout, None);
+        }
+    }
+}
+
 impl GraphicsPipeline {
     pub fn new(vulkan: &Vulkan, info: GraphicsPipelineInfo) -> Self {
         let shader_main_c_str = std::ffi::CString::new("main").unwrap();
@@ -310,16 +323,20 @@ impl RenderPass {
                             .build()
                     })
                     .collect::<Vec<_>>();
-                
+
                 (i, color_attachments)
             })
             .collect::<Vec<_>>();
 
-        let subpass_descriptions = subpass_attachments_references.iter().map(|(i, color_attachments)| {
-            vk::SubpassDescription::builder()
-                .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-                .color_attachments(color_attachments).build()
-        }).collect::<Vec<_>>();
+        let subpass_descriptions = subpass_attachments_references
+            .iter()
+            .map(|(i, color_attachments)| {
+                vk::SubpassDescription::builder()
+                    .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+                    .color_attachments(color_attachments)
+                    .build()
+            })
+            .collect::<Vec<_>>();
 
         let attachment_descriptions = attachments
             .iter()
@@ -414,6 +431,9 @@ impl Deref for RenderPass {
 impl Drop for InternalRenderPass {
     fn drop(&mut self) {
         unsafe {
+            self.vulkan_dep
+                .device()
+                .destroy_framebuffer(self.framebuffer, None);
             self.vulkan_dep
                 .device()
                 .destroy_render_pass(self.render_pass, None);
