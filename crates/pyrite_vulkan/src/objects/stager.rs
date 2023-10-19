@@ -1,6 +1,6 @@
 use crate::{
-    Buffer, BufferInfo, QueueConfig, QueueType, SharingMode, Vulkan, VulkanAllocator,
-    VulkanInstance, DEFAULT_QUEUE,
+    Buffer, BufferInfo, CommandBuffer, QueueConfig, QueueType, SharingMode, Vulkan,
+    VulkanAllocator, VulkanInstance, DEFAULT_QUEUE,
 };
 use ash::vk;
 use pyrite_app::resource::Resource;
@@ -36,5 +36,24 @@ impl VulkanStager {
             staging_buffer,
             gpu_async,
         }
+    }
+
+    pub fn poll(&self, vulkan: &Vulkan) {}
+
+    /// Schedules a buffer to be staged to the GPU using the best available method.
+    pub fn schedule_stage_buffer(&self, vulkan: &Vulkan, buffer: &Buffer) {}
+
+    pub fn schedule_stage_buffer_sync(&self, vulkan: &Vulkan, buffer: &Buffer) {}
+    pub fn schedule_stage_buffer_async(&self, vulkan: &Vulkan, buffer: &Buffer) {}
+
+    /// Records any queued up synchronous staging tasks to the command buffer
+    ///
+    /// These are then expected to be submitted to the default queue right before the GPU executes
+    /// the next frame.
+    pub fn record_synchronous_staging_commands(
+        &self,
+        vulkan: &Vulkan,
+        command_buffer: &CommandBuffer,
+    ) {
     }
 }

@@ -1,13 +1,18 @@
-use crate::{
-    Vulkan,
-    VulkanDep,
-    VulkanInstance,
-};
+use crate::{Vulkan, VulkanDep, VulkanInstance};
 use ash::vk;
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
+type DescriptorSetPoolDep = Arc<InternalDescriptorSetPool>;
 pub struct DescriptorSetPool {
     internal: Arc<InternalDescriptorSetPool>,
+}
+
+impl Deref for DescriptorSetPool {
+    type Target = InternalDescriptorSetPool;
+
+    fn deref(&self) -> &Self::Target {
+        &self.internal
+    }
 }
 
 pub struct InternalDescriptorSetPool {
@@ -17,34 +22,8 @@ pub struct InternalDescriptorSetPool {
 
 impl DescriptorSetPool {
     pub fn new(vulkan: &Vulkan) -> Self {
-        let descriptor_pool_sizes = [
-            vk::DescriptorPoolSize::builder()
-                .ty(vk::DescriptorType::UNIFORM_BUFFER)
-                .descriptor_count(100)
-                .build(),
-            vk::DescriptorPoolSize::builder()
-                .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .descriptor_count(100)
-                .build(),
-        ];
-
-        let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::builder()
-            .pool_sizes(&descriptor_pool_sizes)
-            .max_sets(25);
-
-        // Safety: The descriptor pool is dropped when the internal descriptor pool is dropped
-        let descriptor_pool = unsafe {
-            vulkan
-                .device()
-                .create_descriptor_pool(&descriptor_pool_create_info, None)
-                .expect("Failed to create descriptor pool")
-        };
-
         Self {
-            internal: Arc::new(InternalDescriptorSetPool {
-                vulkan_dep: vulkan.create_dep(),
-                descriptor_pool,
-            }),
+            internal: Arc::new(InternalDescriptorSetPool::new(vulkan)),
         }
     }
 
@@ -75,14 +54,11 @@ impl DescriptorSetPool {
         descriptor_sets
             .into_iter()
             .map(|descriptor_set| DescriptorSet {
-                descriptor_pool: self.internal.clone(),
+                descriptor_pool_dep: self.internal.clone(),
+                _descriptor_layout_dep: descriptor_set_layout.create_dep(),
                 descriptor_set,
             })
             .collect()
-    }
-
-    pub fn descriptor_pool(&self) -> &vk::DescriptorPool {
-        &self.internal.descriptor_pool
     }
 }
 
@@ -96,12 +72,72 @@ impl Drop for InternalDescriptorSetPool {
     }
 }
 
+impl InternalDescriptorSetPool {
+    pub fn new(vulkan: &Vulkan) -> Self {
+        let descriptor_pool_sizes = [
+            vk::DescriptorPoolSize::builder()
+                .ty(vk::DescriptorType::UNIFORM_BUFFER)
+                .descriptor_count(100)
+                .build(),
+            vk::DescriptorPoolSize::builder()
+                .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .descriptor_count(100)
+                .build(),
+        ];
+
+        let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::builder()
+            .pool_sizes(&descriptor_pool_sizes)
+            .max_sets(25);
+
+        // Safety: The descriptor pool is dropped when the internal descriptor pool is dropped
+        let descriptor_pool = unsafe {
+            vulkan
+                .device()
+                .create_descriptor_pool(&descriptor_pool_create_info, None)
+                .expect("Failed to create descriptor pool")
+        };
+
+        Self {
+            vulkan_dep: vulkan.create_dep(),
+            descriptor_pool,
+        }
+    }
+    pub fn descriptor_pool(&self) -> &vk::DescriptorPool {
+        &self.descriptor_pool
+    }
+}
+
+type DescriptorSetLayoutDep = Arc<InternalDescriptorSetLayout>;
 pub struct DescriptorSetLayout {
+    internal: Arc<InternalDescriptorSetLayout>,
+}
+
+impl Deref for DescriptorSetLayout {
+    type Target = InternalDescriptorSetLayout;
+
+    fn deref(&self) -> &Self::Target {
+        &self.internal
+    }
+}
+
+impl DescriptorSetLayout {
+    pub fn new(vulkan: &Vulkan, bindings: &[vk::DescriptorSetLayoutBinding]) -> Self {
+        Self {
+            internal: Arc::new(InternalDescriptorSetLayout::new(vulkan, bindings)),
+        }
+    }
+
+    fn create_dep(&self) -> DescriptorSetLayoutDep {
+        self.internal.clone()
+    }
+}
+
+pub struct InternalDescriptorSetLayout {
     vulkan_dep: VulkanDep,
     descriptor_set_layout: vk::DescriptorSetLayout,
 }
 
-impl DescriptorSetLayout {
+impl InternalDescriptorSetLayout {
     pub fn new(vulkan: &Vulkan, bindings: &[vk::DescriptorSetLayoutBinding]) -> Self {
         let descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo::builder()
             .bindings(bindings)
@@ -127,7 +163,7 @@ impl DescriptorSetLayout {
     }
 }
 
-impl Drop for DescriptorSetLayout {
+impl Drop for InternalDescriptorSetLayout {
     fn drop(&mut self) {
         unsafe {
             self.vulkan_dep
@@ -138,14 +174,30 @@ impl Drop for DescriptorSetLayout {
 }
 
 pub struct DescriptorSet {
-    descriptor_pool: Arc<InternalDescriptorSetPool>,
+    descriptor_pool_dep: DescriptorSetPoolDep,
+    _descriptor_layout_dep: DescriptorSetLayoutDep,
     descriptor_set: vk::DescriptorSet,
+}
+
+impl Drop for DescriptorSet {
+    fn drop(&mut self) {
+        unsafe {
+            self.descriptor_pool_dep
+                .vulkan_dep
+                .device()
+                .free_descriptor_sets(
+                    *self.descriptor_pool_dep.descriptor_pool(),
+                    &[self.descriptor_set],
+                )
+                .expect("Failed to free descriptor sets");
+        }
+    }
 }
 
 impl DescriptorSet {
     pub fn update_descriptor_sets(&self, descriptor_writes: &[vk::WriteDescriptorSet]) {
         unsafe {
-            self.descriptor_pool
+            self.descriptor_pool_dep
                 .vulkan_dep
                 .device()
                 .update_descriptor_sets(descriptor_writes, &[]);

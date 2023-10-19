@@ -24,6 +24,27 @@ impl Drop for MemoryAllocation {
 }
 
 impl MemoryAllocation {
+    pub fn map_memory(&self) -> *mut std::ffi::c_void {
+        unsafe {
+            self.allocator_dep.vulkan_dep.device().map_memory(
+                self.device_memory,
+                self.offset,
+                self.size,
+                vk::MemoryMapFlags::empty(),
+            )
+        }
+        .unwrap()
+    }
+
+    pub fn unmap_memory(&self) {
+        unsafe {
+            self.allocator_dep
+                .vulkan_dep
+                .device()
+                .unmap_memory(self.device_memory);
+        }
+    }
+
     pub fn device_memory(&self) -> vk::DeviceMemory {
         self.device_memory
     }
