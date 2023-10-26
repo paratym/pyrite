@@ -1,11 +1,6 @@
-use crate::{
-    GraphicsPipeline,
-    RenderPass,
-    Vulkan,
-    VulkanDep,
-    VulkanInstance,
-};
+use crate::{Buffer, GraphicsPipeline, RenderPass, UntypedBuffer, Vulkan, VulkanDep};
 use ash::vk;
+use pyrite_util::Dependable;
 use std::sync::Arc;
 
 pub struct CommandPool {
@@ -179,6 +174,30 @@ impl CommandBuffer {
                 buffer_memory_barriers,
                 image_memory_barriers,
             );
+        }
+    }
+
+    pub fn copy_buffer(
+        &self,
+        src_buffer: &UntypedBuffer,
+        src_offset: u64,
+        src_size: u64,
+        dst_buffer: &UntypedBuffer,
+        dst_offset: u64,
+    ) {
+        let regions = [vk::BufferCopy::builder()
+            .src_offset(src_offset)
+            .dst_offset(dst_offset)
+            .size(src_size)
+            .build()];
+
+        unsafe {
+            self.command_pool.vulkan_dep.device().cmd_copy_buffer(
+                self.command_buffer,
+                src_buffer.buffer(),
+                dst_buffer.buffer(),
+                &regions,
+            )
         }
     }
 

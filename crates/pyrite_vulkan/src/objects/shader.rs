@@ -1,5 +1,6 @@
-use crate::{Vulkan, VulkanDep, VulkanInstance};
+use crate::{Vulkan, VulkanDep};
 use ash::vk;
+use pyrite_util::Dependable;
 
 pub struct Shader {
     vulkan_dep: VulkanDep,

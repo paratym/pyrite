@@ -5,6 +5,7 @@ use std::{
 };
 
 use ash::{extensions, vk, Device, Entry, Instance};
+use pyrite_util::dependable;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
 use pyrite_app::resource::Resource;
@@ -22,87 +23,18 @@ pub static DEFAULT_QUEUE: QueueConfig = QueueConfig::new(
     ],
 );
 
-pub type VulkanDep = Arc<dyn VulkanInstance>;
-
-pub type VulkanRef<'a> = &'a dyn VulkanInstance;
-
-pub trait VulkanInstance: Send + Sync {
-    fn instance(&self) -> &Instance;
-    fn surface_loader(&self) -> &extensions::khr::Surface;
-    fn surface(&self) -> &vk::SurfaceKHR;
-    fn physical_device(&self) -> &PhysicalDevice;
-    fn device(&self) -> &Device;
-    fn queue(&self, name: QueueName) -> Option<&Queue>;
-    fn default_queue(&self) -> &Queue {
-        self.queue(DEFAULT_QUEUE.queue_name()).unwrap()
-    }
-}
-
 #[derive(Resource)]
+#[dependable]
 pub struct Vulkan {
-    internal_instance: Arc<dyn VulkanInstance>,
-}
-
-impl VulkanInstance for Vulkan {
-    fn instance(&self) -> &Instance {
-        self.internal_instance.instance()
-    }
-
-    fn surface_loader(&self) -> &extensions::khr::Surface {
-        self.internal_instance.surface_loader()
-    }
-
-    fn surface(&self) -> &vk::SurfaceKHR {
-        self.internal_instance.surface()
-    }
-
-    fn physical_device(&self) -> &PhysicalDevice {
-        self.internal_instance.physical_device()
-    }
-
-    fn device(&self) -> &Device {
-        self.internal_instance.device()
-    }
-
-    fn queue(&self, name: QueueName) -> Option<&Queue> {
-        self.internal_instance.queue(name)
-    }
-}
-
-pub struct InternalVulkanInstance {
     _entry: Entry,
     instance: Instance,
     physical_device: PhysicalDevice,
     device: Device,
     surface_loader: extensions::khr::Surface,
     surface: vk::SurfaceKHR,
-    queues: HashMap<QueueName, Queue>,
-}
-
-impl VulkanInstance for InternalVulkanInstance {
-    fn instance(&self) -> &Instance {
-        &self.instance
-    }
-
-    fn surface_loader(&self) -> &extensions::khr::Surface {
-        &self.surface_loader
-    }
-
-    fn surface(&self) -> &vk::SurfaceKHR {
-        &self.surface
-    }
-
-    fn physical_device(&self) -> &PhysicalDevice {
-        &self.physical_device
-    }
-
-    fn device(&self) -> &Device {
-        &self.device
-    }
-
-    fn queue(&self, name: QueueName) -> Option<&Queue> {
-        self.queues.get(name)
-    }
+    queues: HashMap<&'static str, Queue>,
+    debug_utils_loader: Option<extensions::ext::DebugUtils>,
+    debug_utils_messenger: Option<vk::DebugUtilsMessengerEXT>,
 }
 
 #[derive(Clone)]
@@ -119,13 +51,18 @@ pub struct Queue {
     queue: vk::Queue,
 }
 
-impl Drop for InternalVulkanInstance {
+impl Drop for VulkanInner {
     fn drop(&mut self) {
         unsafe {
             self.device().device_wait_idle().unwrap();
 
             self.surface_loader().destroy_surface(self.surface, None);
             self.device().destroy_device(None);
+            #[cfg(debug_assertions)]
+            if let Some(debug_utils_loader) = self.debug_utils_loader.as_ref() {
+                debug_utils_loader
+                    .destroy_debug_utils_messenger(self.debug_utils_messenger.unwrap(), None);
+            }
             self.instance().destroy_instance(None);
         }
     }
@@ -138,6 +75,14 @@ pub struct VulkanConfig<'a> {
 }
 
 impl Vulkan {
+    pub fn new(config: VulkanConfig) -> Self {
+        Self {
+            inner: Arc::new(VulkanInner::new(config)),
+        }
+    }
+}
+
+impl VulkanInner {
     pub fn new(config: VulkanConfig) -> Self {
         let entry = unsafe { Entry::load() }.expect("Vulkan could not be loaded.");
 
@@ -160,9 +105,18 @@ impl Vulkan {
             .map(|ext| *ext as *const i8)
             .collect::<Vec<_>>();
 
-            let mut instance_layers = vec![];
+            #[cfg(debug_assertions)]
+            let instance_extensions = {
+                println!("Debug mode enabled. Enabling debug extensions.");
+                let mut instance_extensions = instance_extensions;
+                instance_extensions.push(ash::extensions::ext::DebugUtils::name().as_ptr());
+                instance_extensions
+            };
+
+            let mut instance_layers: Vec<CString> = Vec::new();
             #[cfg(debug_assertions)]
             {
+                println!("Debug mode enabled. Enabling validation layers.");
                 instance_layers.push(CString::new("VK_LAYER_KHRONOS_validation").unwrap());
             }
 
@@ -179,6 +133,34 @@ impl Vulkan {
             unsafe { entry.create_instance(&instance_create_info, None) }
                 .expect("Vulkan instance could not be created.")
         };
+
+        #[cfg(debug_assertions)]
+        let (debug_utils_loader, debug_utils_messenger) = {
+            let debug_utils_loader = extensions::ext::DebugUtils::new(&entry, &instance);
+            let debug_utils_messenger_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+                .message_severity(
+                    vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                        | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+                )
+                .message_type(
+                    vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                        | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                        | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+                )
+                .pfn_user_callback(Some(debug_messenger_callback));
+
+            let debug_utils_messenger = unsafe {
+                debug_utils_loader
+                    .create_debug_utils_messenger(&debug_utils_messenger_create_info, None)
+            }
+            .expect("Could not create debug utils messenger.");
+
+            (Some(debug_utils_loader), Some(debug_utils_messenger))
+        };
+        #[cfg(not(debug_assertions))]
+        let (debug_utils_loader, debug_utils_messenger) = (None, None);
 
         let surface_loader = extensions::khr::Surface::new(&entry, &instance);
         let surface = unsafe {
@@ -204,7 +186,6 @@ impl Vulkan {
                 unsafe { instance.get_physical_device_memory_properties(device) };
             let queue_families =
                 unsafe { instance.get_physical_device_queue_family_properties(device) };
-            println!("Queue families: {:?}", queue_families);
 
             PhysicalDevice {
                 physical_device: device,
@@ -224,15 +205,15 @@ impl Vulkan {
         );
 
         Self {
-            internal_instance: Arc::new(InternalVulkanInstance {
-                _entry: entry,
-                instance,
-                physical_device,
-                device,
-                surface_loader,
-                surface,
-                queues,
-            }),
+            _entry: entry,
+            instance,
+            physical_device,
+            device,
+            surface_loader,
+            surface,
+            queues,
+            debug_utils_loader,
+            debug_utils_messenger,
         }
     }
 
@@ -248,46 +229,78 @@ impl Vulkan {
 
         // Find queue families we need and queues we need.
         config.queues.into_iter().for_each(|queue| {
-            let queue_family_index = physical_device.queue_families.iter().enumerate().find_map(
-                |(index, properties)| {
-                    // Check if queue family has all the required types requested.
-                    if !queue.required_types().iter().all(|flag| {
-                        *flag == QueueType::Present || properties.queue_flags.contains(flag.to_vk())
-                    }) {
-                        return None;
-                    }
-
-                    // Check if queue family supports surface if present is requested.
-                    if queue.required_types().contains(&QueueType::Present) {
-                        let supports_surface = unsafe {
-                            surface_loader
-                                .get_physical_device_surface_support(
-                                    physical_device.physical_device,
-                                    index as u32,
-                                    surface,
-                                )
-                                .expect("Could not get physical device surface support.")
-                        };
-
-                        if !supports_surface {
+            let valid_queue_family_indices =
+                physical_device
+                    .queue_families
+                    .iter()
+                    .enumerate()
+                    .map(|(index, properties)| {
+                        // Check if queue family has all the required types requested.
+                        if !queue.required_types().iter().all(|flag| {
+                            *flag == QueueType::Present
+                                || properties.queue_flags.contains(flag.to_vk())
+                        }) {
                             return None;
                         }
-                    }
 
-                    // Check if the queue family has enough capacity for the queue.
-                    if queue_family_indices.contains_key(&(index as u32))
-                        && queue_family_indices.get(&(index as u32)).unwrap().len()
-                            >= properties.queue_count as usize
-                    {
-                        return None;
-                    }
+                        // Check if queue family supports surface if present is requested.
+                        if queue.required_types().contains(&QueueType::Present) {
+                            let supports_surface = unsafe {
+                                surface_loader
+                                    .get_physical_device_surface_support(
+                                        physical_device.physical_device,
+                                        index as u32,
+                                        surface,
+                                    )
+                                    .expect("Could not get physical device surface support.")
+                            };
 
-                    Some(index as u32)
-                },
-            );
+                            if !supports_surface {
+                                return None;
+                            }
+                        }
+
+                        // Check if the queue family has enough capacity for the queue.
+                        if queue_family_indices.contains_key(&(index as u32))
+                            && queue_family_indices.get(&(index as u32)).unwrap().len()
+                                >= properties.queue_count as usize
+                        {
+                            return None;
+                        }
+
+                        Some(index as u32)
+                    });
+
+            // Find best valid queue family index.
+            let queue_family_index =
+                valid_queue_family_indices.fold(None, |best, current| match (best, current) {
+                    (None, Some(current)) => Some(current),
+                    (Some(best), Some(current)) => {
+                        // If the best queue family index is not in the map, return it.
+                        if !queue_family_indices.contains_key(&best) {
+                            return Some(best);
+                        }
+
+                        // If the current queue family index is not in the map, return it.
+                        if !queue_family_indices.contains_key(&current) {
+                            return Some(current);
+                        }
+
+                        // If the current queue family index has more queues available than the best queue family index, return it.
+                        if queue_family_indices.get(&current).unwrap().len()
+                            < queue_family_indices.get(&best).unwrap().len()
+                        {
+                            Some(current)
+                        } else {
+                            Some(best)
+                        }
+                    }
+                    (best, _) => best,
+                });
 
             // Add queue to queue family.
             if let Some(queue_family_index) = queue_family_index {
+                println!("Queue family index: {}", queue_family_index);
                 if queue_family_indices.contains_key(&queue_family_index) {
                     queue_family_indices
                         .get_mut(&queue_family_index)
@@ -355,9 +368,47 @@ impl Vulkan {
         (device, queues)
     }
 
-    pub fn create_dep(&self) -> VulkanDep {
-        self.internal_instance.clone()
+    pub fn instance(&self) -> &Instance {
+        &self.instance
     }
+
+    pub fn surface_loader(&self) -> &extensions::khr::Surface {
+        &self.surface_loader
+    }
+
+    pub fn surface(&self) -> &vk::SurfaceKHR {
+        &self.surface
+    }
+
+    pub fn physical_device(&self) -> &PhysicalDevice {
+        &self.physical_device
+    }
+
+    pub fn device(&self) -> &Device {
+        &self.device
+    }
+
+    pub fn queue(&self, name: QueueName) -> Option<&Queue> {
+        self.queues.get(name)
+    }
+
+    pub fn default_queue(&self) -> &Queue {
+        self.queue(DEFAULT_QUEUE.queue_name()).unwrap()
+    }
+}
+
+unsafe extern "system" fn debug_messenger_callback(
+    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+    message_type: vk::DebugUtilsMessageTypeFlagsEXT,
+    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+    _p_user_data: *mut std::ffi::c_void,
+) -> vk::Bool32 {
+    let message = unsafe { CStr::from_ptr((*p_callback_data).p_message) };
+    println!(
+        "[Vulkan] {:?} {:?} {:?}",
+        message_severity, message_type, message
+    );
+    vk::FALSE
 }
 
 impl Queue {

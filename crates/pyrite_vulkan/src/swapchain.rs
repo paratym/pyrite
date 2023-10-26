@@ -1,19 +1,9 @@
-use ash::{
-    extensions,
-    vk,
-};
+use ash::{extensions, vk};
 
 use pyrite_app::resource::Resource;
+use pyrite_util::Dependable;
 
-use crate::{
-    Image,
-    ImageDep,
-    Semaphore,
-    Vulkan,
-    VulkanDep,
-    VulkanInstance,
-    VulkanRef,
-};
+use crate::{Image, ImageDep, Semaphore, Vulkan, VulkanDep, VulkanRef};
 
 #[derive(Resource)]
 pub struct Swapchain {
@@ -104,6 +94,15 @@ impl Swapchain {
         };
 
         let extent = swapchain_support.capabilities.current_extent;
+        println!("Swapchain extent: {:?}", extent);
+        println!(
+            "Swapchain min extent: {:?}",
+            swapchain_support.capabilities.min_image_extent
+        );
+        println!(
+            "Swapchain max extent: {:?}",
+            swapchain_support.capabilities.max_image_extent
+        );
 
         let queue_family_indices = [vulkan.default_queue().queue_family_index()];
         let create_info = vk::SwapchainCreateInfoKHR::builder()
@@ -190,7 +189,11 @@ impl Swapchain {
         }
     }
 
-    pub fn present(&self, image_index: u32, wait_semaphores: &[&Semaphore]) -> anyhow::Result<()> {
+    pub fn present(
+        &self,
+        image_index: u32,
+        wait_semaphores: &[&Semaphore],
+    ) -> anyhow::Result<bool> {
         let wait_semaphores = wait_semaphores
             .iter()
             .map(|semaphore| semaphore.semaphore())
@@ -208,15 +211,11 @@ impl Swapchain {
                 .queue_present(self.vulkan_dep.default_queue().queue(), &present_info)
         };
 
-        if !res.is_ok() {
+        if res.is_err() {
             return Err(anyhow::anyhow!("Swapchain is out of date."));
         }
 
-        if !res.unwrap() {
-            return Err(anyhow::anyhow!("Swapchain is out of date."));
-        }
-
-        Ok(())
+        Ok(res.unwrap())
     }
 
     /// Will destroy any borrowed images in use and create a new swapchain.

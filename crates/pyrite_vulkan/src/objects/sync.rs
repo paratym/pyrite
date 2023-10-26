@@ -1,9 +1,6 @@
-use crate::{
-    Vulkan,
-    VulkanDep,
-    VulkanInstance,
-};
+use crate::{Vulkan, VulkanDep};
 use ash::vk;
+use pyrite_util::Dependable;
 
 pub struct Semaphore {
     vulkan_dep: VulkanDep,

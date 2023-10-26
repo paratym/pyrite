@@ -1,0 +1,8 @@
+[package]
+name = "pyrite_util"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pyrite_util_macros = { path = "./macros" }
+

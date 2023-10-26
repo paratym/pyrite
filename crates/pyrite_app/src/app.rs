@@ -1,25 +1,13 @@
 use std::{
     any::TypeId,
-    cell::{
-        Ref,
-        RefCell,
-        RefMut,
-    },
+    cell::{Ref, RefCell, RefMut},
     collections::HashMap,
 };
 
 use crate::{
-    resource::{
-        BoxedResource,
-        Res,
-        Resource,
-        ResourceBank,
-    },
+    resource::{BoxedResource, Res, Resource, ResourceBank},
     scheduler::SystemScheduler,
-    stage::{
-        StageBuilder,
-        DEFAULT_STAGE,
-    },
+    stage::{StageBuilder, DEFAULT_STAGE},
     system::SystemFunctionHandler,
 };
 

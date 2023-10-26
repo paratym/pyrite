@@ -1,5 +1,6 @@
-use crate::{Vulkan, VulkanDep, VulkanInstance};
+use crate::{Vulkan, VulkanDep};
 use ash::vk;
+use pyrite_util::Dependable;
 use std::{ops::Deref, sync::Arc};
 
 type DescriptorSetPoolDep = Arc<InternalDescriptorSetPool>;
@@ -87,7 +88,8 @@ impl InternalDescriptorSetPool {
 
         let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::builder()
             .pool_sizes(&descriptor_pool_sizes)
-            .max_sets(25);
+            .max_sets(25)
+            .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET);
 
         // Safety: The descriptor pool is dropped when the internal descriptor pool is dropped
         let descriptor_pool = unsafe {
@@ -158,8 +160,8 @@ impl InternalDescriptorSetLayout {
         }
     }
 
-    pub fn descriptor_set_layout(&self) -> &vk::DescriptorSetLayout {
-        &self.descriptor_set_layout
+    pub fn descriptor_set_layout(&self) -> vk::DescriptorSetLayout {
+        self.descriptor_set_layout
     }
 }
 
@@ -204,7 +206,7 @@ impl DescriptorSet {
         }
     }
 
-    pub fn descriptor_set(&self) -> &vk::DescriptorSet {
-        &self.descriptor_set
+    pub fn descriptor_set(&self) -> vk::DescriptorSet {
+        self.descriptor_set
     }
 }

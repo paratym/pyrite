@@ -1,5 +1,6 @@
 use ash::vk;
 use pyrite_app::resource::Resource;
+use pyrite_util::Dependable;
 
 use crate::{Vulkan, VulkanDep};
 use std::{ops::Deref, sync::Arc};
@@ -23,9 +24,28 @@ impl Drop for MemoryAllocation {
     }
 }
 
+pub struct MemoryMapHandle<'a> {
+    allocation: &'a MemoryAllocation,
+    mapped_memory: *mut std::ffi::c_void,
+}
+
+impl Deref for MemoryMapHandle<'_> {
+    type Target = *mut std::ffi::c_void;
+
+    fn deref(&self) -> &Self::Target {
+        &self.mapped_memory
+    }
+}
+
+impl Drop for MemoryMapHandle<'_> {
+    fn drop(&mut self) {
+        self.allocation.unmap_memory();
+    }
+}
+
 impl MemoryAllocation {
-    pub fn map_memory(&self) -> *mut std::ffi::c_void {
-        unsafe {
+    pub fn map_memory(&self) -> MemoryMapHandle<'_> {
+        let ptr = unsafe {
             self.allocator_dep.vulkan_dep.device().map_memory(
                 self.device_memory,
                 self.offset,
@@ -33,10 +53,15 @@ impl MemoryAllocation {
                 vk::MemoryMapFlags::empty(),
             )
         }
-        .unwrap()
+        .unwrap();
+
+        MemoryMapHandle {
+            allocation: self,
+            mapped_memory: ptr,
+        }
     }
 
-    pub fn unmap_memory(&self) {
+    fn unmap_memory(&self) {
         unsafe {
             self.allocator_dep
                 .vulkan_dep
@@ -60,6 +85,44 @@ impl MemoryAllocation {
 
 pub struct AllocationInfo {
     pub memory_requirements: vk::MemoryRequirements,
+    pub memory_property_flags: vk::MemoryPropertyFlags,
+}
+
+impl AllocationInfo {
+    pub fn builder() -> AllocationInfoBuilder {
+        AllocationInfoBuilder::new()
+    }
+}
+
+pub struct AllocationInfoBuilder {
+    pub memory_requirements: vk::MemoryRequirements,
+    pub memory_property_flags: vk::MemoryPropertyFlags,
+}
+
+impl AllocationInfoBuilder {
+    fn new() -> Self {
+        Self {
+            memory_requirements: vk::MemoryRequirements::default(),
+            memory_property_flags: vk::MemoryPropertyFlags::empty(),
+        }
+    }
+
+    pub fn memory_requirements(mut self, memory_requirements: vk::MemoryRequirements) -> Self {
+        self.memory_requirements = memory_requirements;
+        self
+    }
+
+    pub fn memory_property_flags(mut self, memory_property_flags: vk::MemoryPropertyFlags) -> Self {
+        self.memory_property_flags = memory_property_flags;
+        self
+    }
+
+    pub fn build(self) -> AllocationInfo {
+        AllocationInfo {
+            memory_requirements: self.memory_requirements,
+            memory_property_flags: self.memory_property_flags,
+        }
+    }
 }
 
 pub trait Allocator: Send + Sync {
@@ -116,7 +179,7 @@ impl Allocator for VulkanAllocator {
 
         let memory_type_index = self.find_memory_type(
             memory_requirements.memory_type_bits,
-            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            info.memory_property_flags,
         );
 
         let allocation_create_info = vk::MemoryAllocateInfo::builder()

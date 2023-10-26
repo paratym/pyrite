@@ -1,7 +1,6 @@
-use crate::{
-    Allocation, AllocationInfo, Allocator, SharingMode, Vulkan, VulkanDep, VulkanInstance,
-};
+use crate::{Allocation, AllocationInfo, Allocator, SharingMode, Vulkan, VulkanDep};
 use ash::vk;
+use pyrite_util::Dependable;
 use std::{ops::Deref, sync::Arc};
 
 pub type ImageDep = Arc<Box<dyn InternalImage>>;
@@ -181,9 +180,12 @@ impl OwnedImage {
         };
 
         let memory_requirements = unsafe { vulkan.device().get_image_memory_requirements(image) };
-        let allocation = vulkan_allocator.allocate(&AllocationInfo {
-            memory_requirements,
-        });
+        let allocation = vulkan_allocator.allocate(
+            &AllocationInfo::builder()
+                .memory_requirements(memory_requirements)
+                .memory_property_flags(vk::MemoryPropertyFlags::DEVICE_LOCAL)
+                .build(),
+        );
 
         unsafe {
             vulkan.device().bind_image_memory(

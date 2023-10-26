@@ -14,14 +14,38 @@ use pyrite_vulkan::{
 
 use crate::{
     key::to_pyrite_key,
+    time::Time,
     window::{self, Window, WindowConfig, WindowEvent},
 };
+
+/// The pre-update stage, runs before the update/default stage.
+pub const PRE_UPDATE_STAGE: &'static str = "pre_update";
+
+/// The render stage, runs after the update/default stage.
+pub const RENDER_STAGE: &'static str = "render";
 
 #[derive(Clone)]
 pub struct DesktopConfig {
     /// The name of the application, used internally for vulkan.
     pub application_name: String,
     pub window_config: WindowConfig,
+    /// The stages to be ran in order, the desktop preset will create it's own stages which are
+    /// added by default.
+    pub stages: Vec<String>,
+}
+
+impl Default for DesktopConfig {
+    fn default() -> Self {
+        Self {
+            application_name: "Pyrite Application".to_string(),
+            window_config: WindowConfig::default(),
+            stages: vec![
+                PRE_UPDATE_STAGE.to_string(),
+                DEFAULT_STAGE.to_string(),
+                RENDER_STAGE.to_string(),
+            ],
+        }
+    }
 }
 
 /// Sets up the desktop resources needed for the DesktopEntryPoint using the given config.
@@ -29,11 +53,12 @@ pub struct DesktopConfig {
 ///
 /// Adds the following resources:
 /// - Window: Managing window state and events.
-/// - Input: Managing input state and events from the window.
+/// - Input: Managing input state and events from the window.e
 /// - Vulkan: Managing vulkan and gives access to a device.
 /// - Swapchain: Managing the swapchain and links to the Window resource.
 /// - VulkanAllocator: Managing memory allocations.
 /// - Assets: Managing assets.
+/// - Time: Reference for application time.
 ///
 /// Creates the following systems:
 /// - window::system_window_hotkeys: Handles window hotkeys such as Window Fullscreen.
@@ -42,6 +67,13 @@ pub struct DesktopConfig {
 /// Sets the entry point to handle control flow and runs the DEFAULT_STAGE.
 pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig) {
     let event_loop = EventLoop::new();
+
+    // Setup stages.
+    app_builder.create_stage(PRE_UPDATE_STAGE.to_string(), |stage_builder| {});
+    app_builder.create_stage(RENDER_STAGE.to_string(), |stage_builder| {});
+
+    // Setup time.
+    app_builder.add_resource(Time::new());
 
     // Setup window.
     app_builder.add_resource(Window::new(&event_loop, config.window_config.clone()));
@@ -54,8 +86,7 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
                 VulkanConfig::from_window(
                     config.application_name.clone(),
                     &*app_builder.get_resource::<Window>(),
-                )
-                .queue(&STAGING_QUEUE),
+                ), // .queue(&STAGING_QUEUE),
             )
         };
         app_builder.add_resource(vulkan);
@@ -125,9 +156,14 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
                     _ => (),
                 },
                 WinitEvent::MainEventsCleared => {
-                    application.execute_stage(DEFAULT_STAGE);
-
+                    // Update desktop specific resources.
+                    application.get_resource_mut::<Time>().update();
                     application.get_resource_mut::<Input>().clear_inputs();
+                    application.get_resource_mut::<VulkanStager>().update();
+
+                    application.execute_stage(PRE_UPDATE_STAGE);
+                    application.execute_stage(DEFAULT_STAGE);
+                    application.execute_stage(RENDER_STAGE);
                 }
                 _ => (),
             }
