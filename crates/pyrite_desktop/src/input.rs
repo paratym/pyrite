@@ -1,5 +1,5 @@
-use pyrite_input::keyboard::Key;
-use winit::keyboard::KeyCode as WinitKeyCode;
+use pyrite_input::{keyboard::Key, mouse::Button};
+use winit::{event::ButtonId, keyboard::KeyCode as WinitKeyCode};
 
 pub(crate) fn to_pyrite_key(code: WinitKeyCode) -> Option<Key> {
     match code {
@@ -72,6 +72,15 @@ pub(crate) fn to_pyrite_key(code: WinitKeyCode) -> Option<Key> {
         WinitKeyCode::ControlRight => Some(Key::RControl),
         WinitKeyCode::AltLeft => Some(Key::LAlt),
         WinitKeyCode::AltRight => Some(Key::RAlt),
+        _ => None,
+    }
+}
+
+pub(crate) fn to_pyrite_button(button: ButtonId) -> Option<Button> {
+    match button {
+        0 => Some(Button::Left),
+        1 => Some(Button::Right),
+        2 => Some(Button::Middle),
         _ => None,
     }
 }

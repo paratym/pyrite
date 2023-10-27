@@ -123,6 +123,20 @@ impl Window {
         self.winit_window.set_inner_size(window_size);
     }
 
+    pub fn set_cursor_visible(&mut self, visible: bool) {
+        self.winit_window.set_cursor_visible(visible);
+    }
+
+    pub fn set_cursor_grab_mode(&mut self, grab_mode: CursorGrabMode) {
+        self.winit_window
+            .set_cursor_grab(match grab_mode {
+                CursorGrabMode::None => winit::window::CursorGrabMode::None,
+                CursorGrabMode::Confined => winit::window::CursorGrabMode::Confined,
+                CursorGrabMode::Locked => winit::window::CursorGrabMode::Locked,
+            })
+            .unwrap();
+    }
+
     pub fn width(&self) -> u32 {
         self.winit_window.inner_size().width
     }
@@ -138,6 +152,12 @@ impl Window {
     pub(crate) fn should_close(&self) -> bool {
         self.should_close
     }
+}
+
+pub enum CursorGrabMode {
+    None,
+    Confined,
+    Locked,
 }
 
 impl SurfaceWindow for Window {}

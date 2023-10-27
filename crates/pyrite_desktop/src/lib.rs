@@ -2,7 +2,7 @@ pub use desktop::*;
 
 mod desktop;
 
-mod key;
+mod input;
 pub mod time;
 pub mod window;
 

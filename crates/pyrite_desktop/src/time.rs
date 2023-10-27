@@ -27,6 +27,7 @@ impl Time {
         let now = time::Instant::now();
         self.delta = now.duration_since(self.last_frame);
         self.elapsed += self.delta;
+        self.last_frame = now;
     }
 
     pub fn elapsed(&self) -> time::Duration {

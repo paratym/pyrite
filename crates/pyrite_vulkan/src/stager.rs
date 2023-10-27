@@ -59,7 +59,11 @@ impl VulkanStager {
     }
 
     pub fn update(&mut self) {
+        // Clear tasks and reset staging buffer offsets
         self.immediate_tasks.clear();
+        for (_, staging_buffer) in &mut self.staging_buffers {
+            staging_buffer.current_offset = 0;
+        }
     }
 
     fn get_or_create_staging_buffer(
@@ -70,7 +74,6 @@ impl VulkanStager {
     ) -> Uuid {
         for (uuid, staging_buffer) in &mut self.staging_buffers {
             if staging_buffer.current_offset + size <= staging_buffer.buffer.size() {
-                staging_buffer.current_offset += size;
                 return *uuid;
             }
         }
@@ -100,7 +103,7 @@ impl VulkanStager {
             uuid,
             StagingBuffer {
                 buffer,
-                current_offset: size,
+                current_offset: 0,
             },
         );
 
@@ -110,26 +113,28 @@ impl VulkanStager {
     /// Schedules a buffer to be staged to the GPU using the best available method.
     // pub fn schedule_stage_buffer<T>(&mut self, src_data: &T, dst_buffer: &Buffer) {}
 
-    pub fn schedule_stage_buffer<T: Sized>(
+    pub unsafe fn schedule_stage_buffer(
         &mut self,
         vulkan: &Vulkan,
         vulkan_allocator: &mut VulkanAllocator,
-        src_data: &T,
+        data_ptr: *const u8,
+        data_size: u64,
         dst_buffer: &Arc<UntypedBuffer>,
         stage_type: StageType,
     ) {
         match stage_type {
             StageType::Immediate => {
-                let data_ptr = src_data as *const T as *const u8;
-                let data_size = std::mem::size_of::<T>();
-
                 let staging_buffer_uuid =
                     self.get_or_create_staging_buffer(vulkan, vulkan_allocator, data_size as u64);
 
                 let staging_buffer = self.staging_buffers.get_mut(&staging_buffer_uuid).unwrap();
                 let memory = staging_buffer.buffer.allocation().map_memory();
                 unsafe {
-                    std::ptr::copy_nonoverlapping(data_ptr, *memory.deref() as *mut u8, data_size);
+                    std::ptr::copy_nonoverlapping(
+                        data_ptr,
+                        memory.deref().clone() as *mut u8,
+                        data_size as usize,
+                    );
                 }
 
                 self.immediate_tasks.push(StagingTask {

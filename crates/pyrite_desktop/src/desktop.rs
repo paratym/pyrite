@@ -7,13 +7,13 @@ use winit::{
 };
 
 use pyrite_app::{resource::ResMut, stage::DEFAULT_STAGE, AppBuilder};
-use pyrite_input::{Input, SubmitInput};
+use pyrite_input::{keyboard, mouse, Input};
 use pyrite_vulkan::{
     swapchain::Swapchain, Vulkan, VulkanAllocator, VulkanConfig, VulkanStager, STAGING_QUEUE,
 };
 
 use crate::{
-    key::to_pyrite_key,
+    input::{to_pyrite_button, to_pyrite_key},
     time::Time,
     window::{self, Window, WindowConfig, WindowEvent},
 };
@@ -138,6 +138,15 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
                             .get_resource_mut::<Swapchain>()
                             .refresh(&*vulkan);
                     }
+                    WinitWindowEvent::CursorMoved { position, .. } => {
+                        application
+                            .get_resource_mut::<Input>()
+                            .mouse_mut()
+                            .submit_input(mouse::SubmitInput::Position(
+                                position.x as f32,
+                                position.y as f32,
+                            ));
+                    }
                     _ => (),
                 },
                 WinitEvent::DeviceEvent { event, .. } => match event {
@@ -146,10 +155,35 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
                             match input.state {
                                 winit::event::ElementState::Pressed => application
                                     .get_resource_mut::<Input>()
-                                    .submit_input(SubmitInput::Pressed(key)),
+                                    .keyboard_mut()
+                                    .submit_input(keyboard::SubmitInput::Pressed(key)),
                                 winit::event::ElementState::Released => application
                                     .get_resource_mut::<Input>()
-                                    .submit_input(SubmitInput::Released(key)),
+                                    .keyboard_mut()
+                                    .submit_input(keyboard::SubmitInput::Released(key)),
+                            }
+                        }
+                    }
+                    WinitDeviceEvent::MouseMotion { delta } => {
+                        application
+                            .get_resource_mut::<Input>()
+                            .mouse_mut()
+                            .submit_input(mouse::SubmitInput::Delta(
+                                delta.0 as f32,
+                                delta.1 as f32,
+                            ));
+                    }
+                    WinitDeviceEvent::Button { button, state } => {
+                        if let Some(button) = to_pyrite_button(button) {
+                            match state {
+                                winit::event::ElementState::Pressed => application
+                                    .get_resource_mut::<Input>()
+                                    .mouse_mut()
+                                    .submit_input(mouse::SubmitInput::Pressed(button)),
+                                winit::event::ElementState::Released => application
+                                    .get_resource_mut::<Input>()
+                                    .mouse_mut()
+                                    .submit_input(mouse::SubmitInput::Released(button)),
                             }
                         }
                     }
@@ -158,12 +192,13 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
                 WinitEvent::MainEventsCleared => {
                     // Update desktop specific resources.
                     application.get_resource_mut::<Time>().update();
-                    application.get_resource_mut::<Input>().clear_inputs();
                     application.get_resource_mut::<VulkanStager>().update();
 
                     application.execute_stage(PRE_UPDATE_STAGE);
                     application.execute_stage(DEFAULT_STAGE);
                     application.execute_stage(RENDER_STAGE);
+
+                    application.get_resource_mut::<Input>().clear_inputs();
                 }
                 _ => (),
             }
