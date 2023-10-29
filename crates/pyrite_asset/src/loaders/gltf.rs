@@ -28,10 +28,7 @@ impl AssetLoader for GltfLoader {
     where
         Self: Sized,
     {
-        let data = std::fs::read(file_path).expect("Failed to read asset");
-
-        let (document, buffers, images) =
-            gltf::import_slice(data).expect("Failed to parse asset as GLTF");
+        let (document, buffers, images) = gltf::import(file_path).unwrap();
         Gltf {
             document,
             buffers,

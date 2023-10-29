@@ -60,7 +60,7 @@ impl Default for GraphicsPipelineInfoBuilder {
                 .build(),
             viewport_state: vk::PipelineViewportStateCreateInfo::default(),
             rasterization_state: vk::PipelineRasterizationStateCreateInfo::builder()
-                .cull_mode(vk::CullModeFlags::BACK)
+                .cull_mode(vk::CullModeFlags::NONE)
                 .line_width(1.0)
                 .polygon_mode(vk::PolygonMode::FILL)
                 .depth_clamp_enable(false)
