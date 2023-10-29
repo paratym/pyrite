@@ -105,12 +105,14 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
     }
 
     // Setup Assets
-    let mut assets = Assets::new();
-    assets.add_loader(GltfLoader::new());
+    let assets = Assets::new();
     app_builder.add_resource(assets);
-    app_builder.add_system(|mut assets: ResMut<Assets>| {
-        assets.update();
-    });
+    app_builder.add_system_to_stage(
+        |mut assets: ResMut<Assets>| {
+            assets.update();
+        },
+        PRE_UPDATE_STAGE,
+    );
 
     app_builder.add_system(window::system_window_hotkeys);
 

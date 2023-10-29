@@ -1,8 +1,5 @@
 use crate::{DescriptorSetLayout, Image, ImageDep, Shader, Vulkan, VulkanDep};
-use ash::{
-    vk,
-    vk::{AttachmentDescription, Handle},
-};
+use ash::vk;
 use pyrite_util::Dependable;
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 

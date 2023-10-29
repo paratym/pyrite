@@ -17,12 +17,21 @@ impl GltfLoader {
 impl AssetLoader for GltfLoader {
     type Asset = Gltf;
 
-    fn load(&self, read: &[u8]) -> Self::Asset
+    fn new() -> Self
     where
         Self: Sized,
     {
+        Self {}
+    }
+
+    fn load(&self, file_path: String) -> Self::Asset
+    where
+        Self: Sized,
+    {
+        let data = std::fs::read(file_path).expect("Failed to read asset");
+
         let (document, buffers, images) =
-            gltf::import_slice(read).expect("Failed to parse asset as GLTF");
+            gltf::import_slice(data).expect("Failed to parse asset as GLTF");
         Gltf {
             document,
             buffers,
@@ -30,7 +39,7 @@ impl AssetLoader for GltfLoader {
         }
     }
 
-    fn identifier() -> &'static str {
-        "gltf"
+    fn identifiers() -> &'static [&'static str] {
+        &["gltf"]
     }
 }

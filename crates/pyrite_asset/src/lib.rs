@@ -1,3 +1,5 @@
+extern crate shaderc;
+
 mod asset;
 pub mod loaders;
 
