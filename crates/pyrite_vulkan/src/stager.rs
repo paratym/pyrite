@@ -1,8 +1,8 @@
 use std::{cmp::max, collections::HashMap, ops::Deref, sync::Arc};
 
 use crate::{
-    Buffer, BufferInfo, CommandBuffer, QueueConfig, QueueType, SharingMode, UntypedBuffer, Vulkan,
-    VulkanAllocator, VulkanAllocatorDep, VulkanDep, DEFAULT_QUEUE,
+    BufferInfo, CommandBuffer, QueueConfig, QueueType, SharingMode, UntypedBuffer, Vulkan,
+    VulkanAllocator, VulkanDep, DEFAULT_QUEUE,
 };
 use ash::vk;
 use pyrite_app::resource::Resource;
@@ -24,10 +24,13 @@ pub struct VulkanStager {
     staging_buffers: HashMap<Uuid, StagingBuffer>,
     gpu_async: bool,
     immediate_tasks: Vec<StagingTask>,
+
+    /// For validation only.
+    recorded_immediate_tasks: u32,
 }
 
 pub struct StagingBuffer {
-    buffer: UntypedBuffer,
+    buffer: Arc<UntypedBuffer>,
     current_offset: u64,
 }
 
@@ -55,12 +58,20 @@ impl VulkanStager {
             staging_buffers: HashMap::new(),
             gpu_async,
             immediate_tasks: vec![],
+            recorded_immediate_tasks: 0,
         }
     }
 
     pub fn update(&mut self) {
         // Clear tasks and reset staging buffer offsets
+        if self.recorded_immediate_tasks as usize != self.immediate_tasks.len() {
+            dbg!(
+                "{} staging tasks not submitted to GPU before next frame!",
+                self.immediate_tasks.len() - self.recorded_immediate_tasks as usize
+            );
+        }
         self.immediate_tasks.clear();
+        self.recorded_immediate_tasks = 0;
         for (_, staging_buffer) in &mut self.staging_buffers {
             staging_buffer.current_offset = 0;
         }
@@ -79,7 +90,7 @@ impl VulkanStager {
         }
 
         let uuid = Uuid::new_v4();
-        let buffer = UntypedBuffer::new(
+        let buffer = Arc::new(UntypedBuffer::new(
             vulkan,
             vulkan_allocator,
             &BufferInfo::builder()
@@ -96,7 +107,7 @@ impl VulkanStager {
                     .unwrap(),
                 )
                 .build(),
-        );
+        ));
 
         // Insert the new buffer into the staging buffers map.
         self.staging_buffers.insert(
@@ -153,7 +164,11 @@ impl VulkanStager {
     ///
     /// These are then expected to be submitted to the default queue right before the GPU executes
     /// the next frame.
-    pub fn record_immediate_tasks(&self, command_buffer: &CommandBuffer) {
+    pub fn record_immediate_tasks(
+        &mut self,
+        command_buffer: &CommandBuffer,
+    ) -> Vec<Arc<UntypedBuffer>> {
+        let mut used_staging_buffers = Vec::new();
         for task in &self.immediate_tasks {
             let src_buffer = self.staging_buffers.get(&task.src_buffer).unwrap();
             command_buffer.copy_buffer(
@@ -163,6 +178,9 @@ impl VulkanStager {
                 &*task.dst_buffer,
                 task.dst_offset,
             );
+            self.recorded_immediate_tasks += 1;
+            used_staging_buffers.push(src_buffer.buffer.clone());
         }
+        used_staging_buffers
     }
 }

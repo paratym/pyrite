@@ -109,7 +109,7 @@ pub fn dependable(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let struct_definitions = quote! {
         #(#attrs)*
         #visibility struct #name {
-            inner: Arc<#inner_name>,
+            inner: std::sync::Arc<#inner_name>,
         }
 
         #visibility struct #inner_name #fields
@@ -136,7 +136,7 @@ pub fn dependable(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let dep_type_name = syn::Ident::new(&format!("{}Dep", ast.name), ast.name.span());
     let ref_type_name = syn::Ident::new(&format!("{}Ref", ast.name), ast.name.span());
     let impl_types = quote! {
-        #visibility type #dep_type_name = Arc<#inner_name>;
+        #visibility type #dep_type_name = std::sync::Arc<#inner_name>;
         #visibility type #ref_type_name<'a> = &'a #inner_name;
     };
 

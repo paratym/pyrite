@@ -1,3 +1,8 @@
+use std::{
+    ops::Deref,
+    sync::{Arc, RwLock},
+};
+
 use ash::{extensions, vk};
 
 use pyrite_app::resource::Resource;
@@ -5,8 +10,16 @@ use pyrite_util::Dependable;
 
 use crate::{Image, ImageDep, Semaphore, Vulkan, VulkanDep, VulkanRef};
 
+pub type SwapchainDep = Arc<RwLock<SwapchainInner>>;
+
 #[derive(Resource)]
 pub struct Swapchain {
+    // Synchronization: RwLock should never block since we have our async scheduler following
+    // borrow checker rules. Swapchain dependencies should never be shared cross thread manually.
+    inner: Arc<RwLock<SwapchainInner>>,
+}
+
+pub struct SwapchainInner {
     vulkan_dep: VulkanDep,
     swapchain_loader: extensions::khr::Swapchain,
     swapchain: vk::SwapchainKHR,
@@ -36,8 +49,92 @@ struct SwapchainSupport {
 
 impl Swapchain {
     pub fn new(vulkan: &Vulkan) -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(SwapchainInner::new(vulkan))),
+        }
+    }
+
+    /// Will destroy any borrowed images in use and create a new swapchain out of the old one, will
+    /// wait for queue idle.
+    pub fn refresh(&mut self) {
+        self.inner.write().unwrap().refresh();
+    }
+
+    pub fn acquire_next_image(&self, semaphore: &Semaphore) -> (u32, bool) {
+        let inner = self.inner.read().unwrap();
+        unsafe {
+            inner
+                .swapchain_loader
+                .acquire_next_image(
+                    inner.swapchain,
+                    std::u64::MAX,
+                    semaphore.semaphore(),
+                    vk::Fence::null(),
+                )
+                .expect("Failed to acquire next image.")
+        }
+    }
+
+    pub fn present(
+        &self,
+        image_index: u32,
+        wait_semaphores: &[&Semaphore],
+    ) -> anyhow::Result<bool> {
+        let inner = self.inner.read().unwrap();
+        let wait_semaphores = wait_semaphores
+            .iter()
+            .map(|semaphore| semaphore.semaphore())
+            .collect::<Vec<_>>();
+        let swapchains = [inner.swapchain];
+        let image_indices = [image_index];
+
+        let present_info = vk::PresentInfoKHR::builder()
+            .wait_semaphores(&wait_semaphores)
+            .swapchains(&swapchains)
+            .image_indices(&image_indices);
+
+        let res = unsafe {
+            inner
+                .swapchain_loader
+                .queue_present(inner.vulkan_dep.default_queue().queue(), &present_info)
+        };
+
+        if res.is_err() {
+            return Err(anyhow::anyhow!("Swapchain is out of date."));
+        }
+
+        Ok(res.unwrap())
+    }
+
+    pub fn image(&self, index: u32) -> ImageDep {
+        self.inner.read().unwrap().borrowed_images[index as usize].create_dep()
+    }
+
+    pub fn create_dep(&self) -> SwapchainDep {
+        self.inner.clone()
+    }
+
+    pub fn swapchain_loader(&self) -> extensions::khr::Swapchain {
+        self.inner.read().unwrap().swapchain_loader.clone()
+    }
+
+    pub fn swapchain(&self) -> vk::SwapchainKHR {
+        self.inner.read().unwrap().swapchain
+    }
+
+    pub fn swapchain_format(&self) -> vk::Format {
+        self.inner.read().unwrap().swapchain_format
+    }
+
+    pub fn swapchain_extent(&self) -> vk::Extent2D {
+        self.inner.read().unwrap().swapchain_extent
+    }
+}
+
+impl SwapchainInner {
+    pub fn new(vulkan: &Vulkan) -> Self {
         let swapchain_loader = extensions::khr::Swapchain::new(vulkan.instance(), vulkan.device());
-        let new_swapchain = Self::new_swapchain(&swapchain_loader, vulkan);
+        let new_swapchain = Self::new_swapchain(&swapchain_loader, vulkan, None);
 
         Self {
             vulkan_dep: vulkan.create_dep(),
@@ -51,9 +148,27 @@ impl Swapchain {
         }
     }
 
+    pub fn refresh(&mut self) {
+        unsafe { self.vulkan_dep.device().device_wait_idle().unwrap() };
+        self.destroy_old_swapchain(true);
+
+        let new_swapchain = SwapchainInner::new_swapchain(
+            &self.swapchain_loader,
+            &self.vulkan_dep,
+            Some(self.swapchain),
+        );
+        self.swapchain = new_swapchain.swapchain;
+        self.swapchain_format = new_swapchain.swapchain_format;
+        self.swapchain_extent = new_swapchain.swapchain_extent;
+        self.images = new_swapchain.images;
+        self.image_views = new_swapchain.image_views;
+        self.borrowed_images = new_swapchain.borrowed_images;
+    }
+
     fn new_swapchain(
         swapchain_loader: &extensions::khr::Swapchain,
         vulkan: VulkanRef,
+        old_swapchain: Option<vk::SwapchainKHR>,
     ) -> NewSwapchain {
         let swapchain_support = SwapchainSupport::query_swapchain_support(
             vulkan.surface_loader(),
@@ -105,7 +220,7 @@ impl Swapchain {
         );
 
         let queue_family_indices = [vulkan.default_queue().queue_family_index()];
-        let create_info = vk::SwapchainCreateInfoKHR::builder()
+        let mut create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(vulkan.surface().clone())
             .min_image_count(image_count)
             .image_color_space(surface_format.color_space)
@@ -119,6 +234,10 @@ impl Swapchain {
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
             .present_mode(present_mode)
             .clipped(true);
+
+        if let Some(old_swapchain) = old_swapchain {
+            create_info = create_info.old_swapchain(old_swapchain);
+        }
 
         let swapchain = unsafe { swapchain_loader.create_swapchain(&create_info, None) }
             .expect("Failed to create swapchain.");
@@ -176,65 +295,7 @@ impl Swapchain {
         }
     }
 
-    pub fn acquire_next_image(&self, semaphore: &Semaphore) -> (u32, bool) {
-        unsafe {
-            self.swapchain_loader
-                .acquire_next_image(
-                    self.swapchain,
-                    std::u64::MAX,
-                    semaphore.semaphore(),
-                    vk::Fence::null(),
-                )
-                .expect("Failed to acquire next image.")
-        }
-    }
-
-    pub fn present(
-        &self,
-        image_index: u32,
-        wait_semaphores: &[&Semaphore],
-    ) -> anyhow::Result<bool> {
-        let wait_semaphores = wait_semaphores
-            .iter()
-            .map(|semaphore| semaphore.semaphore())
-            .collect::<Vec<_>>();
-        let swapchains = [self.swapchain];
-        let image_indices = [image_index];
-
-        let present_info = vk::PresentInfoKHR::builder()
-            .wait_semaphores(&wait_semaphores)
-            .swapchains(&swapchains)
-            .image_indices(&image_indices);
-
-        let res = unsafe {
-            self.swapchain_loader
-                .queue_present(self.vulkan_dep.default_queue().queue(), &present_info)
-        };
-
-        if res.is_err() {
-            return Err(anyhow::anyhow!("Swapchain is out of date."));
-        }
-
-        Ok(res.unwrap())
-    }
-
-    /// Will destroy any borrowed images in use and create a new swapchain.
-    pub fn refresh(&mut self, vulkan: VulkanRef) {
-        self.destroy_old_swapchain();
-
-        let new_swapchain = Self::new_swapchain(&self.swapchain_loader, vulkan);
-        self.swapchain = new_swapchain.swapchain;
-        self.swapchain_format = new_swapchain.swapchain_format;
-        self.swapchain_extent = new_swapchain.swapchain_extent;
-        self.images = new_swapchain.images;
-        self.image_views = new_swapchain.image_views;
-        self.borrowed_images = new_swapchain.borrowed_images;
-    }
-
-    fn destroy_old_swapchain(&mut self) {
-        // TODO: Make async so it has to wait for the GPU to finish using the swapchain and it's
-        // images with all references dropped. Can be made async since we can have an old reference
-        // existing since it won't directly break. Can look into an async drop queue.
+    fn destroy_old_swapchain(&self, keep_swapchain_handle: bool) {
         for &image_view in self.image_views.iter() {
             unsafe {
                 self.vulkan_dep
@@ -243,36 +304,18 @@ impl Swapchain {
             }
         }
 
-        unsafe {
-            self.swapchain_loader
-                .destroy_swapchain(self.swapchain, None);
+        if !keep_swapchain_handle {
+            unsafe {
+                self.swapchain_loader
+                    .destroy_swapchain(self.swapchain, None);
+            }
         }
-    }
-
-    pub fn swapchain_loader(&self) -> &extensions::khr::Swapchain {
-        &self.swapchain_loader
-    }
-
-    pub fn swapchain(&self) -> vk::SwapchainKHR {
-        self.swapchain
-    }
-
-    pub fn swapchain_format(&self) -> vk::Format {
-        self.swapchain_format
-    }
-
-    pub fn swapchain_extent(&self) -> vk::Extent2D {
-        self.swapchain_extent
-    }
-
-    pub fn image(&self, index: u32) -> ImageDep {
-        self.borrowed_images[index as usize].create_dep()
     }
 }
 
-impl Drop for Swapchain {
+impl Drop for SwapchainInner {
     fn drop(&mut self) {
-        self.destroy_old_swapchain();
+        self.destroy_old_swapchain(false);
     }
 }
 

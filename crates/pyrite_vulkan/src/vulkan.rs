@@ -114,11 +114,25 @@ impl VulkanInner {
                 instance_extensions
             };
 
+            let instance_layer_settings = entry
+                .enumerate_instance_layer_properties()
+                .expect("Could not enumerate instance layer properties.");
+
+            instance_layer_settings.iter().for_each(|layer| {
+                println!(
+                    "Instance layer: {}",
+                    unsafe { CStr::from_ptr(layer.layer_name.as_ptr()) }
+                        .to_str()
+                        .unwrap()
+                );
+            });
+
             let mut instance_layers: Vec<CString> = Vec::new();
             #[cfg(debug_assertions)]
             {
                 println!("Debug mode enabled. Enabling validation layers.");
                 instance_layers.push(CString::new("VK_LAYER_KHRONOS_validation").unwrap());
+                // instance_layers.push(CString::new("VK_LAYER_LUNARG_api_dump").unwrap());
             }
 
             let c_ptr_instance_layers = instance_layers

@@ -135,10 +135,7 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
                         application
                             .get_resource_mut::<Window>()
                             .push_event(WindowEvent::Resized(size.width, size.height));
-                        let vulkan = application.get_resource::<Vulkan>();
-                        application
-                            .get_resource_mut::<Swapchain>()
-                            .refresh(&*vulkan);
+                        application.get_resource_mut::<Swapchain>().refresh();
                     }
                     WinitWindowEvent::CursorMoved { position, .. } => {
                         application
