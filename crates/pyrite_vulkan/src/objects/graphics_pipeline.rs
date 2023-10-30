@@ -299,38 +299,34 @@ pub struct InternalRenderPass {
 
 impl RenderPass {
     pub fn new(vulkan: &Vulkan, subpasses: &[Subpass]) -> Self {
+        let mut attachment_index = 0u32;
         let attachments = subpasses
             .iter()
             .flat_map(|subpass| {
                 // Map from unique images to attachments
-                let mut attachments: HashMap<vk::Image, Attachment> = HashMap::new();
-
-                attachments.extend(
-                    subpass
-                        .color_attachments
-                        .iter()
-                        .chain(&subpass.depth_attachment)
-                        .map(|attachment_reference| {
-                            let attachment = attachment_reference.attachment.clone();
-                            let image = attachment.image_dep.image();
-                            (image, attachment)
-                        }),
-                );
-
-                attachments
+                subpass
+                    .color_attachments
+                    .iter()
+                    .chain(&subpass.depth_attachment)
+                    .map(|attachment_reference| {
+                        let attachment = attachment_reference.attachment.clone();
+                        let image = attachment.image_dep.image();
+                        let i = attachment_index;
+                        attachment_index += 1;
+                        (image, (i, attachment))
+                    })
+                    .collect::<HashMap<_, _>>()
             })
-            .collect::<HashMap<vk::Image, Attachment>>();
+            .collect::<HashMap<vk::Image, (u32, Attachment)>>();
 
         let attachment_indices = attachments
             .iter()
-            .enumerate()
-            .map(|(index, (image, _))| (*image, index as u32))
+            .map(|(image, (index, _))| (image.clone(), index.clone()))
             .collect::<HashMap<vk::Image, u32>>();
 
         let subpass_attachments_references = subpasses
             .iter()
-            .enumerate()
-            .map(|(i, subpass)| {
+            .map(|subpass| {
                 let color_attachments = subpass
                     .color_attachments
                     .iter()
@@ -358,13 +354,15 @@ impl RenderPass {
                                 .build()
                         });
 
-                (i, color_attachments, depth_attachment)
+                (color_attachments, depth_attachment)
             })
             .collect::<Vec<_>>();
 
+        println!("{:?}", subpass_attachments_references);
+
         let subpass_descriptions = subpass_attachments_references
             .iter()
-            .map(|(i, color_attachments, depth_attachment)| {
+            .map(|(color_attachments, depth_attachment)| {
                 let mut builder = vk::SubpassDescription::builder()
                     .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
                     .color_attachments(color_attachments);
@@ -377,20 +375,29 @@ impl RenderPass {
             })
             .collect::<Vec<_>>();
 
-        let attachment_descriptions = attachments
+        let mut attachment_descriptions = attachments
             .iter()
-            .map(|(_, attachment)| {
-                vk::AttachmentDescription::builder()
-                    .format(attachment.image_dep.image_format())
-                    .samples(attachment.info.samples)
-                    .load_op(attachment.info.load_op)
-                    .store_op(attachment.info.store_op)
-                    .stencil_load_op(attachment.info.load_op)
-                    .stencil_store_op(attachment.info.store_op)
-                    .initial_layout(attachment.info.initial_layout)
-                    .final_layout(attachment.info.final_layout)
-                    .build()
+            .map(|(_, (index, attachment))| {
+                (
+                    index,
+                    vk::AttachmentDescription::builder()
+                        .format(attachment.image_dep.image_format())
+                        .samples(attachment.info.samples)
+                        .load_op(attachment.info.load_op)
+                        .store_op(attachment.info.store_op)
+                        .stencil_load_op(attachment.info.load_op)
+                        .stencil_store_op(attachment.info.store_op)
+                        .initial_layout(attachment.info.initial_layout)
+                        .final_layout(attachment.info.final_layout)
+                        .build(),
+                )
             })
+            .collect::<Vec<_>>();
+
+        attachment_descriptions.sort_by(|(a_index, _), (b_index, _)| a_index.cmp(b_index));
+        let attachment_descriptions = attachment_descriptions
+            .into_iter()
+            .map(|(_, attachment_description)| attachment_description)
             .collect::<Vec<_>>();
 
         let subpass_dependencies = [
@@ -431,14 +438,21 @@ impl RenderPass {
                 .unwrap()
         };
 
-        let attachment_image_views = attachments
+        let mut attachment_image_views = attachments
             .iter()
-            .map(|(_, attachment)| attachment.image_dep.image_view())
+            .map(|(_, (index, attachment))| (index, attachment.image_dep.image_view()))
+            .collect::<Vec<_>>();
+
+        // Sort by index
+        attachment_image_views.sort_by(|(a_index, _), (b_index, _)| a_index.cmp(b_index));
+        let attachment_image_views = attachment_image_views
+            .into_iter()
+            .map(|(_, image_view)| image_view)
             .collect::<Vec<_>>();
 
         let (width, height) = attachments
             .iter()
-            .map(|(_, attachment)| {
+            .map(|(_, (_, attachment))| {
                 (
                     attachment.image_dep.image_extent().width,
                     attachment.image_dep.image_extent().height,
@@ -544,6 +558,7 @@ pub struct AttachmentInfo {
     store_op: vk::AttachmentStoreOp,
     initial_layout: vk::ImageLayout,
     final_layout: vk::ImageLayout,
+    is_depth: bool,
 }
 
 impl Default for AttachmentInfo {
@@ -554,6 +569,7 @@ impl Default for AttachmentInfo {
             store_op: vk::AttachmentStoreOp::STORE,
             initial_layout: vk::ImageLayout::UNDEFINED,
             final_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            is_depth: false,
         }
     }
 }
@@ -581,6 +597,11 @@ impl AttachmentInfo {
 
     pub fn final_layout(mut self, final_layout: vk::ImageLayout) -> Self {
         self.final_layout = final_layout;
+        self
+    }
+
+    pub fn is_depth(mut self, is_depth: bool) -> Self {
+        self.is_depth = is_depth;
         self
     }
 }

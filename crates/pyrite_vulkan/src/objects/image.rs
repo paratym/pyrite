@@ -152,7 +152,7 @@ pub struct OwnedImage {
     image_view: vk::ImageView,
     image_format: vk::Format,
     image_extent: vk::Extent3D,
-    allocation: Allocation,
+    _allocation: Allocation,
 }
 
 impl OwnedImage {
@@ -215,7 +215,7 @@ impl OwnedImage {
             image_view,
             image_format: info.format,
             image_extent: info.extent,
-            allocation,
+            _allocation: allocation,
         }
     }
 }
@@ -240,6 +240,7 @@ impl InternalImage for OwnedImage {
 
 impl Drop for OwnedImage {
     fn drop(&mut self) {
+        println!("Dropping image");
         unsafe {
             self.vulkan_dep
                 .device()

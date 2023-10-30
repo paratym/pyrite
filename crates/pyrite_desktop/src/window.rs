@@ -76,6 +76,10 @@ impl Window {
         }
     }
 
+    pub(crate) fn clear_events(&mut self) {
+        self.events.clear();
+    }
+
     pub(crate) fn push_event(&mut self, event: WindowEvent) {
         self.events.insert(event);
     }

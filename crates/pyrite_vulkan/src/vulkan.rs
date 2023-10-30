@@ -53,6 +53,7 @@ pub struct Queue {
 
 impl Drop for VulkanInner {
     fn drop(&mut self) {
+        println!("Dropping VulkanInner.");
         unsafe {
             self.device().device_wait_idle().unwrap();
 

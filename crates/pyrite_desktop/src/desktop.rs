@@ -201,6 +201,7 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
                     application.execute_stage(RENDER_STAGE);
 
                     application.get_resource_mut::<Input>().clear_inputs();
+                    application.get_resource_mut::<Window>().clear_events();
                 }
                 _ => (),
             }
