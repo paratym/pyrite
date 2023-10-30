@@ -310,7 +310,6 @@ impl RenderPass {
                         .color_attachments
                         .iter()
                         .chain(&subpass.depth_attachment)
-                        .chain(&subpass.input_attachments)
                         .map(|attachment_reference| {
                             let attachment = attachment_reference.attachment.clone();
                             let image = attachment.image_dep.image();
@@ -345,18 +344,36 @@ impl RenderPass {
                             .build()
                     })
                     .collect::<Vec<_>>();
+                let depth_attachment =
+                    subpass
+                        .depth_attachment
+                        .as_ref()
+                        .map(|attachment_reference| {
+                            vk::AttachmentReference::builder()
+                                .attachment(
+                                    attachment_indices
+                                        [&attachment_reference.attachment.image_dep.image()],
+                                )
+                                .layout(attachment_reference.layout)
+                                .build()
+                        });
 
-                (i, color_attachments)
+                (i, color_attachments, depth_attachment)
             })
             .collect::<Vec<_>>();
 
         let subpass_descriptions = subpass_attachments_references
             .iter()
-            .map(|(i, color_attachments)| {
-                vk::SubpassDescription::builder()
+            .map(|(i, color_attachments, depth_attachment)| {
+                let mut builder = vk::SubpassDescription::builder()
                     .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-                    .color_attachments(color_attachments)
-                    .build()
+                    .color_attachments(color_attachments);
+
+                if let Some(depth_attachment) = depth_attachment {
+                    builder = builder.depth_stencil_attachment(depth_attachment)
+                }
+
+                builder.build()
             })
             .collect::<Vec<_>>();
 
@@ -376,9 +393,35 @@ impl RenderPass {
             })
             .collect::<Vec<_>>();
 
+        let subpass_dependencies = [
+            vk::SubpassDependency::builder()
+                .src_subpass(vk::SUBPASS_EXTERNAL)
+                .dst_subpass(0)
+                .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                .src_access_mask(vk::AccessFlags::empty())
+                .dst_access_mask(
+                    vk::AccessFlags::COLOR_ATTACHMENT_READ
+                        | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                )
+                .build(),
+            vk::SubpassDependency::builder()
+                .src_subpass(vk::SUBPASS_EXTERNAL)
+                .dst_subpass(0)
+                .src_stage_mask(vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS)
+                .dst_stage_mask(vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS)
+                .src_access_mask(vk::AccessFlags::empty())
+                .dst_access_mask(
+                    vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                        | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                )
+                .build(),
+        ];
+
         let render_pass_create_info = vk::RenderPassCreateInfo::builder()
             .attachments(&attachment_descriptions)
-            .subpasses(&subpass_descriptions);
+            .subpasses(&subpass_descriptions)
+            .dependencies(&subpass_dependencies);
 
         // Safety: The render pass is dropped when the internal render pass is dropped
         let render_pass = unsafe {

@@ -201,9 +201,7 @@ pub fn system_window_hotkeys(mut window: ResMut<Window>, input: Res<Input>) {
         window.set_fullscreen(!is_fullscreen);
     }
 
-    if input.is_key_pressed_with_modifiers(Key::Enter, &[Modifier::Alt])
-        || input.is_key_pressed(Key::F11)
-    {
+    if input.is_key_pressed_with_modifiers(Key::Enter, &[Modifier::Alt]) {
         toggle_fullscreen(&mut window);
     }
 

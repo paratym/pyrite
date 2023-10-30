@@ -129,12 +129,10 @@ impl VulkanStager {
 
                 let staging_buffer = self.staging_buffers.get_mut(&staging_buffer_uuid).unwrap();
                 let memory = staging_buffer.buffer.allocation().map_memory();
+                let dst_ptr = (memory.deref().clone() as *mut u8)
+                    .offset(staging_buffer.current_offset as isize);
                 unsafe {
-                    std::ptr::copy_nonoverlapping(
-                        data_ptr,
-                        memory.deref().clone() as *mut u8,
-                        data_size as usize,
-                    );
+                    std::ptr::copy_nonoverlapping(data_ptr, dst_ptr, data_size as usize);
                 }
 
                 self.immediate_tasks.push(StagingTask {
