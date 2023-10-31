@@ -189,7 +189,7 @@ impl BlitManager {
         // Present swapchain image to screen.
         let present_result = swapchain.present(image_index, &[&blit_finished]);
         if present_result.is_err() {
-            swapchain.refresh(&*self.vulkan_dep);
+            swapchain.refresh();
         }
         self.frame_index = (self.frame_index + 1) % 2;
     }

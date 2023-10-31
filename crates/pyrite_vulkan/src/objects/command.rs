@@ -1,4 +1,4 @@
-use crate::{Buffer, GraphicsPipeline, RenderPass, UntypedBuffer, Vulkan, VulkanDep};
+use crate::{GraphicsPipeline, Image, InternalImage, RenderPass, UntypedBuffer, Vulkan, VulkanDep};
 use ash::vk;
 use pyrite_util::Dependable;
 use std::sync::Arc;
@@ -177,7 +177,7 @@ impl CommandBuffer {
         }
     }
 
-    pub fn copy_buffer(
+    pub fn copy_buffer_to_buffer(
         &self,
         src_buffer: &UntypedBuffer,
         src_offset: u64,
@@ -198,6 +198,35 @@ impl CommandBuffer {
                 dst_buffer.buffer(),
                 &regions,
             )
+        }
+    }
+
+    /// Copies the specified buffer to the specified image. The image must be in the TRANSFER_DST_OPTIMAL layout.
+    pub fn copy_buffer_to_image(
+        &self,
+        src_buffer: &UntypedBuffer,
+        src_offset: u64,
+        dst_image: &dyn InternalImage,
+        dst_subresource: vk::ImageSubresourceLayers,
+        dst_extent: vk::Extent3D,
+    ) {
+        let regions = [vk::BufferImageCopy::builder()
+            .buffer_offset(src_offset)
+            .image_subresource(dst_subresource)
+            .image_extent(dst_extent)
+            .build()];
+
+        unsafe {
+            self.command_pool
+                .vulkan_dep
+                .device()
+                .cmd_copy_buffer_to_image(
+                    self.command_buffer,
+                    src_buffer.buffer(),
+                    dst_image.image(),
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &regions,
+                )
         }
     }
 

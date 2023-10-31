@@ -8,6 +8,7 @@ fn main() {
         DesktopConfig {
             application_name: "Desktop Example".to_string(),
             window_config: WindowConfig::default(),
+            ..Default::default()
         },
     );
 

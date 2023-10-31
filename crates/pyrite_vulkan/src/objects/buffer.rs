@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::{hash::Hash, hash::Hasher};
+
 use ash::vk;
 use pyrite_util::Dependable;
 
@@ -108,12 +111,28 @@ impl BufferInfoBuilder {
     }
 }
 
+pub type BufferDep = Arc<UntypedBuffer>;
+
 pub struct UntypedBuffer {
     vulkan_dep: VulkanDep,
     allocation: Allocation,
     buffer: vk::Buffer,
     size: u64,
 }
+
+impl Hash for UntypedBuffer {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.buffer.hash(state);
+    }
+}
+
+impl PartialEq for UntypedBuffer {
+    fn eq(&self, other: &Self) -> bool {
+        self.buffer == other.buffer
+    }
+}
+
+impl Eq for UntypedBuffer {}
 
 impl UntypedBuffer {
     pub fn new(vulkan: &Vulkan, vulkan_allocator: &mut VulkanAllocator, info: &BufferInfo) -> Self {

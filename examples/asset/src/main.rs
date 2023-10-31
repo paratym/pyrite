@@ -14,7 +14,7 @@ struct AssetBank {
 fn setup(app: &mut AppBuilder) {
     // Assets Resource Setup
     let mut assets = Assets::new();
-    assets.add_loader(TxtLoader {});
+    assets.add_loader::<TxtLoader>();
 
     let handle = assets.load::<String>("assets/test.txt");
 
