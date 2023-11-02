@@ -1,4 +1,4 @@
-use crate::AssetLoader;
+use crate::{AssetLoadError, AssetLoader};
 
 pub struct Image {
     pub width: u32,
@@ -21,19 +21,19 @@ impl AssetLoader for ImageLoader {
         Self {}
     }
 
-    fn load(&self, file_path: String) -> Self::Asset
+    fn load(&self, file_path: String) -> Result<Self::Asset, AssetLoadError>
     where
         Self: Sized,
     {
         let img = image::open(file_path).unwrap();
         let channels = img.color().channel_count();
         let rgba8 = img.into_rgba8();
-        Image {
+        Ok(Image {
             width: rgba8.width(),
             height: rgba8.height(),
             channels: channels as u8,
             data: rgba8.into_vec(),
-        }
+        })
     }
 
     fn identifiers() -> &'static [&'static str] {

@@ -18,11 +18,20 @@ use crate::{
     window::{self, Window, WindowConfig, WindowEvent},
 };
 
+/// The init stage, runs before the pre-update stage.
+pub const INIT_STAGE: &'static str = "init";
+
 /// The pre-update stage, runs before the update/default stage.
 pub const PRE_UPDATE_STAGE: &'static str = "pre_update";
 
+/// The pre-render stage, runs before the render stage.
+pub const PRE_RENDER_STAGE: &'static str = "pre_render";
+
 /// The render stage, runs after the update/default stage.
 pub const RENDER_STAGE: &'static str = "render";
+
+/// The post-render stage, runs after the render stage.
+pub const POST_RENDER_STAGE: &'static str = "post_render";
 
 #[derive(Clone)]
 pub struct DesktopConfig {
@@ -40,9 +49,12 @@ impl Default for DesktopConfig {
             application_name: "Pyrite Application".to_string(),
             window_config: WindowConfig::default(),
             stages: vec![
+                INIT_STAGE.to_string(),
                 PRE_UPDATE_STAGE.to_string(),
                 DEFAULT_STAGE.to_string(),
+                PRE_RENDER_STAGE.to_string(),
                 RENDER_STAGE.to_string(),
+                POST_RENDER_STAGE.to_string(),
             ],
         }
     }
@@ -69,8 +81,11 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
     let event_loop = EventLoop::new();
 
     // Setup stages.
+    app_builder.create_stage(INIT_STAGE.to_string(), |stage_builder| {});
     app_builder.create_stage(PRE_UPDATE_STAGE.to_string(), |stage_builder| {});
+    app_builder.create_stage(PRE_RENDER_STAGE.to_string(), |stage_builder| {});
     app_builder.create_stage(RENDER_STAGE.to_string(), |stage_builder| {});
+    app_builder.create_stage(POST_RENDER_STAGE.to_string(), |stage_builder| {});
 
     // Setup time.
     app_builder.add_resource(Time::new());
@@ -193,9 +208,12 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
                     application.get_resource_mut::<Time>().update();
                     application.get_resource_mut::<VulkanStager>().update();
 
+                    application.execute_stage(INIT_STAGE);
                     application.execute_stage(PRE_UPDATE_STAGE);
                     application.execute_stage(DEFAULT_STAGE);
+                    application.execute_stage(PRE_RENDER_STAGE);
                     application.execute_stage(RENDER_STAGE);
+                    application.execute_stage(POST_RENDER_STAGE);
 
                     application.get_resource_mut::<Input>().clear_inputs();
                     application.get_resource_mut::<Window>().clear_events();

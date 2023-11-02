@@ -1,7 +1,10 @@
-use crate::{Vulkan, VulkanDep};
+use crate::{UntypedBuffer, Vulkan, VulkanDep};
 use ash::vk;
 use pyrite_util::Dependable;
-use std::{ops::Deref, sync::Arc};
+use std::{
+    ops::Deref,
+    sync::{Arc, RwLock, Weak},
+};
 
 type DescriptorSetPoolDep = Arc<InternalDescriptorSetPool>;
 pub struct DescriptorSetPool {
@@ -54,11 +57,7 @@ impl DescriptorSetPool {
 
         descriptor_sets
             .into_iter()
-            .map(|descriptor_set| DescriptorSet {
-                descriptor_pool_dep: self.internal.clone(),
-                _descriptor_layout_dep: descriptor_set_layout.create_dep(),
-                descriptor_set,
-            })
+            .map(|descriptor_set| DescriptorSet::new(self, descriptor_set_layout, descriptor_set))
             .collect()
     }
 }
@@ -109,7 +108,7 @@ impl InternalDescriptorSetPool {
     }
 }
 
-type DescriptorSetLayoutDep = Arc<InternalDescriptorSetLayout>;
+pub type DescriptorSetLayoutDep = Arc<InternalDescriptorSetLayout>;
 pub struct DescriptorSetLayout {
     internal: Arc<InternalDescriptorSetLayout>,
 }
@@ -129,7 +128,7 @@ impl DescriptorSetLayout {
         }
     }
 
-    fn create_dep(&self) -> DescriptorSetLayoutDep {
+    pub fn create_dep(&self) -> DescriptorSetLayoutDep {
         self.internal.clone()
     }
 }
@@ -175,13 +174,51 @@ impl Drop for InternalDescriptorSetLayout {
     }
 }
 
+pub type DescriptorSetDep = Arc<DescriptorSetInner>;
 pub struct DescriptorSet {
+    inner: Arc<DescriptorSetInner>,
+}
+
+impl DescriptorSet {
+    fn new(
+        descriptor_pool: &DescriptorSetPool,
+        descriptor_set_layout: &DescriptorSetLayout,
+        descriptor_set: vk::DescriptorSet,
+    ) -> Self {
+        Self {
+            inner: Arc::new(DescriptorSetInner::new(
+                descriptor_pool,
+                descriptor_set_layout,
+                descriptor_set,
+            )),
+        }
+    }
+
+    pub fn create_dep(&self) -> DescriptorSetDep {
+        self.inner.clone()
+    }
+}
+
+impl Deref for DescriptorSet {
+    type Target = DescriptorSetInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+pub struct DescriptorSetInner {
     descriptor_pool_dep: DescriptorSetPoolDep,
     _descriptor_layout_dep: DescriptorSetLayoutDep,
     descriptor_set: vk::DescriptorSet,
+
+    /// Used to track which buffers the descriptor set points to so when this set is bound, the
+    /// associated buffers can be bound as well. This value is mutation only so this should not be
+    /// blocking.
+    used_buffers: RwLock<Vec<Weak<UntypedBuffer>>>,
 }
 
-impl Drop for DescriptorSet {
+impl Drop for DescriptorSetInner {
     fn drop(&mut self) {
         unsafe {
             self.descriptor_pool_dep
@@ -196,17 +233,87 @@ impl Drop for DescriptorSet {
     }
 }
 
-impl DescriptorSet {
-    pub fn update_descriptor_sets(&self, descriptor_writes: &[vk::WriteDescriptorSet]) {
-        unsafe {
-            self.descriptor_pool_dep
-                .vulkan_dep
-                .device()
-                .update_descriptor_sets(descriptor_writes, &[]);
+impl DescriptorSetInner {
+    fn new(
+        descriptor_pool: &DescriptorSetPool,
+        descriptor_set_layout: &DescriptorSetLayout,
+        descriptor_set: vk::DescriptorSet,
+    ) -> Self {
+        Self {
+            descriptor_pool_dep: descriptor_pool.internal.clone(),
+            _descriptor_layout_dep: descriptor_set_layout.create_dep(),
+            descriptor_set,
+            used_buffers: RwLock::new(Vec::new()),
         }
+    }
+
+    pub unsafe fn update_descriptor_set(&self, descriptor_writes: &[vk::WriteDescriptorSet]) {
+        self.used_buffers.write().unwrap().clear();
+        self.descriptor_pool_dep
+            .vulkan_dep
+            .device()
+            .update_descriptor_sets(descriptor_writes, &[]);
+    }
+
+    pub fn write(&self) -> DescriptorSetWriter {
+        DescriptorSetWriter::new(self)
     }
 
     pub fn descriptor_set(&self) -> vk::DescriptorSet {
         self.descriptor_set
+    }
+}
+
+pub struct DescriptorSetWriter<'a> {
+    descriptor_set: &'a DescriptorSetInner,
+    descriptor_writes: Vec<vk::WriteDescriptorSet>,
+    buffer_infos: Vec<vk::DescriptorBufferInfo>,
+    used_buffers: Vec<Weak<UntypedBuffer>>,
+}
+
+impl<'a> DescriptorSetWriter<'a> {
+    pub fn new(descriptor_set: &'a DescriptorSetInner) -> Self {
+        Self {
+            descriptor_set,
+            descriptor_writes: Vec::new(),
+            buffer_infos: Vec::new(),
+            used_buffers: Vec::new(),
+        }
+    }
+
+    pub fn set_uniform_buffer(mut self, binding: u32, buffer: &Arc<UntypedBuffer>) -> Self {
+        // Used to keep buffer info pointer alive until write call.
+        self.buffer_infos.push(
+            vk::DescriptorBufferInfo::builder()
+                .buffer(buffer.buffer())
+                .range(vk::WHOLE_SIZE)
+                .build(),
+        );
+        let buffer_info = self.buffer_infos.get(self.buffer_infos.len() - 1).unwrap();
+
+        self.descriptor_writes.push(
+            vk::WriteDescriptorSet::builder()
+                .dst_set(self.descriptor_set.descriptor_set())
+                .dst_binding(binding)
+                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                .buffer_info(std::slice::from_ref(buffer_info))
+                .build(),
+        );
+        self.used_buffers.push(Arc::downgrade(buffer));
+        self
+    }
+
+    pub fn submit_writes(self) {
+        // Safety: The bound items to the descriptor set are tracked and bound whenever this
+        // descriptor set is in use. The descriptor set is also guaranteed to not be null since we
+        // have a reference to it.
+        unsafe {
+            self.descriptor_set
+                .update_descriptor_set(&self.descriptor_writes)
+        };
+
+        let mut descriptor_set_used_buffers = self.descriptor_set.used_buffers.write().unwrap();
+        descriptor_set_used_buffers.clear();
+        descriptor_set_used_buffers.extend(self.used_buffers);
     }
 }

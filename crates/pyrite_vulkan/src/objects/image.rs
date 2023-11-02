@@ -1,4 +1,7 @@
-use crate::{Allocation, AllocationInfo, Allocator, SharingMode, Vulkan, VulkanDep};
+use crate::{
+    Allocation, AllocationInfo, Allocator, Attachment, AttachmentInfo, SharingMode, Vulkan,
+    VulkanDep,
+};
 use ash::vk;
 use pyrite_util::Dependable;
 use std::{ops::Deref, sync::Arc};
@@ -9,7 +12,7 @@ pub struct Image {
     internal: Arc<Box<dyn InternalImage>>,
 }
 
-pub struct NewImageInfo {
+pub struct ImageInfo {
     pub flags: vk::ImageCreateFlags,
     pub image_type: vk::ImageType,
     pub format: vk::Format,
@@ -25,7 +28,29 @@ pub struct NewImageInfo {
     pub view_subresource_range: vk::ImageSubresourceRange,
 }
 
-impl Default for NewImageInfo {
+impl ImageInfo {
+    pub fn builder() -> ImageInfoBuilder {
+        ImageInfoBuilder::default()
+    }
+}
+
+pub struct ImageInfoBuilder {
+    pub flags: vk::ImageCreateFlags,
+    pub image_type: vk::ImageType,
+    pub format: vk::Format,
+    pub extent: vk::Extent3D,
+    pub usage: vk::ImageUsageFlags,
+    pub tiling: vk::ImageTiling,
+    pub samples: vk::SampleCountFlags,
+    pub mip_levels: u32,
+    pub array_layers: u32,
+    pub initial_layout: vk::ImageLayout,
+    pub sharing_mode: SharingMode,
+    pub image_view_type: vk::ImageViewType,
+    pub view_subresource_range: vk::ImageSubresourceRange,
+}
+
+impl Default for ImageInfoBuilder {
     fn default() -> Self {
         Self {
             flags: vk::ImageCreateFlags::empty(),
@@ -55,8 +80,96 @@ impl Default for NewImageInfo {
     }
 }
 
+impl ImageInfoBuilder {
+    pub fn flags(mut self, flags: vk::ImageCreateFlags) -> Self {
+        self.flags = flags;
+        self
+    }
+
+    pub fn image_type(mut self, image_type: vk::ImageType) -> Self {
+        self.image_type = image_type;
+        self
+    }
+
+    pub fn format(mut self, format: vk::Format) -> Self {
+        self.format = format;
+        self
+    }
+
+    pub fn extent(mut self, extent: vk::Extent3D) -> Self {
+        self.extent = extent;
+        self
+    }
+
+    pub fn usage(mut self, usage: vk::ImageUsageFlags) -> Self {
+        self.usage = usage;
+        self
+    }
+
+    pub fn tiling(mut self, tiling: vk::ImageTiling) -> Self {
+        self.tiling = tiling;
+        self
+    }
+
+    pub fn samples(mut self, samples: vk::SampleCountFlags) -> Self {
+        self.samples = samples;
+        self
+    }
+
+    pub fn mip_levels(mut self, mip_levels: u32) -> Self {
+        self.mip_levels = mip_levels;
+        self
+    }
+
+    pub fn array_layers(mut self, array_layers: u32) -> Self {
+        self.array_layers = array_layers;
+        self
+    }
+
+    pub fn initial_layout(mut self, initial_layout: vk::ImageLayout) -> Self {
+        self.initial_layout = initial_layout;
+        self
+    }
+
+    pub fn sharing_mode(mut self, sharing_mode: SharingMode) -> Self {
+        self.sharing_mode = sharing_mode;
+        self
+    }
+
+    pub fn image_view_type(mut self, image_view_type: vk::ImageViewType) -> Self {
+        self.image_view_type = image_view_type;
+        self
+    }
+
+    pub fn view_subresource_range(
+        mut self,
+        view_subresource_range: vk::ImageSubresourceRange,
+    ) -> Self {
+        self.view_subresource_range = view_subresource_range;
+        self
+    }
+
+    pub fn build(self) -> ImageInfo {
+        ImageInfo {
+            flags: self.flags,
+            image_type: self.image_type,
+            format: self.format,
+            extent: self.extent,
+            usage: self.usage,
+            tiling: self.tiling,
+            samples: self.samples,
+            mip_levels: self.mip_levels,
+            array_layers: self.array_layers,
+            initial_layout: self.initial_layout,
+            sharing_mode: self.sharing_mode,
+            image_view_type: self.image_view_type,
+            view_subresource_range: self.view_subresource_range,
+        }
+    }
+}
+
 impl Image {
-    pub fn new(vulkan: &Vulkan, vulkan_allocator: &mut dyn Allocator, info: &NewImageInfo) -> Self {
+    pub fn new(vulkan: &Vulkan, vulkan_allocator: &mut dyn Allocator, info: &ImageInfo) -> Self {
         Self {
             internal: Arc::new(Box::new(OwnedImage::new(vulkan, vulkan_allocator, info))),
         }
@@ -76,6 +189,10 @@ impl Image {
                 image_extent,
             ))),
         }
+    }
+
+    pub fn as_color_attachment(&self, attachment_info: AttachmentInfo) -> Attachment {
+        Attachment::new(self, attachment_info)
     }
 
     pub fn create_dep(&self) -> ImageDep {
@@ -156,7 +273,7 @@ pub struct OwnedImage {
 }
 
 impl OwnedImage {
-    pub fn new(vulkan: &Vulkan, vulkan_allocator: &mut dyn Allocator, info: &NewImageInfo) -> Self {
+    pub fn new(vulkan: &Vulkan, vulkan_allocator: &mut dyn Allocator, info: &ImageInfo) -> Self {
         let queue_family_indices = info.sharing_mode.queue_family_indices_or_default(vulkan);
         let image_create_info = vk::ImageCreateInfo::builder()
             .flags(info.flags)

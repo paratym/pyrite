@@ -1,9 +1,36 @@
-use crate::{DescriptorSetLayout, Image, ImageDep, Shader, Vulkan, VulkanDep};
+use crate::{
+    DescriptorSetLayout, DescriptorSetLayoutDep, Image, ImageDep, Shader, Vulkan, VulkanDep,
+};
 use ash::vk;
 use pyrite_util::Dependable;
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
+pub type GraphicsPipelineDep = Arc<GraphicsPipelineInner>;
 pub struct GraphicsPipeline {
+    inner: Arc<GraphicsPipelineInner>,
+}
+
+impl GraphicsPipeline {
+    pub fn new(vulkan: &Vulkan, info: GraphicsPipelineInfo) -> Self {
+        Self {
+            inner: Arc::new(GraphicsPipelineInner::new(vulkan, info)),
+        }
+    }
+
+    pub fn create_dep(&self) -> GraphicsPipelineDep {
+        self.inner.clone()
+    }
+}
+
+impl Deref for GraphicsPipeline {
+    type Target = GraphicsPipelineInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+pub struct GraphicsPipelineInner {
     vulkan_dep: VulkanDep,
     render_pass: RenderPass,
     pipeline_layout: vk::PipelineLayout,
@@ -22,7 +49,7 @@ pub struct GraphicsPipelineInfo {
     color_blend_state: vk::PipelineColorBlendStateCreateInfo,
     dynamic_state: vk::PipelineDynamicStateCreateInfo,
     render_pass: RenderPass,
-    descriptor_set_layouts: Vec<DescriptorSetLayout>,
+    descriptor_set_layouts: Vec<DescriptorSetLayoutDep>,
 }
 
 impl GraphicsPipelineInfo {
@@ -43,7 +70,7 @@ pub struct GraphicsPipelineInfoBuilder {
     color_blend_state: vk::PipelineColorBlendStateCreateInfo,
     dynamic_state: vk::PipelineDynamicStateCreateInfo,
     render_pass: Option<RenderPass>,
-    descriptor_set_layouts: Vec<DescriptorSetLayout>,
+    descriptor_set_layouts: Vec<DescriptorSetLayoutDep>,
 }
 
 impl Default for GraphicsPipelineInfoBuilder {
@@ -153,16 +180,20 @@ impl GraphicsPipelineInfoBuilder {
         self
     }
 
-    pub fn descriptor_set_layout(mut self, descriptor_set_layout: DescriptorSetLayout) -> Self {
-        self.descriptor_set_layouts.push(descriptor_set_layout);
+    pub fn descriptor_set_layout(mut self, descriptor_set_layout: &DescriptorSetLayout) -> Self {
+        self.descriptor_set_layouts
+            .push(descriptor_set_layout.create_dep());
         self
     }
 
     pub fn descriptor_set_layouts(
         mut self,
-        descriptor_set_layouts: Vec<DescriptorSetLayout>,
+        descriptor_set_layouts: Vec<&DescriptorSetLayout>,
     ) -> Self {
-        self.descriptor_set_layouts = descriptor_set_layouts;
+        self.descriptor_set_layouts = descriptor_set_layouts
+            .into_iter()
+            .map(|layout| layout.create_dep())
+            .collect();
         self
     }
 
@@ -184,7 +215,7 @@ impl GraphicsPipelineInfoBuilder {
     }
 }
 
-impl Drop for GraphicsPipeline {
+impl Drop for GraphicsPipelineInner {
     fn drop(&mut self) {
         unsafe {
             self.vulkan_dep
@@ -197,7 +228,7 @@ impl Drop for GraphicsPipeline {
     }
 }
 
-impl GraphicsPipeline {
+impl GraphicsPipelineInner {
     pub fn new(vulkan: &Vulkan, info: GraphicsPipelineInfo) -> Self {
         let shader_main_c_str = std::ffi::CString::new("main").unwrap();
         let shader_stages = [

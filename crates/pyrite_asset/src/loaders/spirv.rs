@@ -1,4 +1,4 @@
-use crate::AssetLoader;
+use crate::{AssetLoadError, AssetLoader};
 
 pub struct SpirVLoader {}
 
@@ -12,7 +12,7 @@ impl AssetLoader for SpirVLoader {
         Self {}
     }
 
-    fn load(&self, file_path: String) -> Self::Asset
+    fn load(&self, file_path: String) -> Result<Self::Asset, AssetLoadError>
     where
         Self: Sized,
     {
@@ -31,9 +31,9 @@ impl AssetLoader for SpirVLoader {
 
         let binary_result = compiler
             .compile_into_spirv(&source, shader_kind, &file_path, "main", None)
-            .unwrap();
+            .map_err(|err| AssetLoadError::new_invalid_file(file_path, err.to_string()))?;
 
-        binary_result.as_binary().to_vec()
+        Ok(binary_result.as_binary().to_vec())
     }
 
     fn identifiers() -> &'static [&'static str] {

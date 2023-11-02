@@ -8,5 +8,6 @@ pyrite_app = { path = "../crates/pyrite_app" }
 pyrite_asset ={ path = "../crates/pyrite_asset" }
 pyrite_desktop = { path = "../crates/pyrite_desktop" }
 pyrite_input = { path = "../crates/pyrite_input" }
+pyrite_render = { path = "../crates/pyrite_render" }
 pyrite_util = { path = "../crates/pyrite_util" }
 pyrite_vulkan = { path = "../crates/pyrite_vulkan" }

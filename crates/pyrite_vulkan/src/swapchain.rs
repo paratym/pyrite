@@ -157,6 +157,11 @@ impl SwapchainInner {
             &self.vulkan_dep,
             Some(self.swapchain),
         );
+
+        unsafe {
+            self.swapchain_loader
+                .destroy_swapchain(self.swapchain, None)
+        };
         self.swapchain = new_swapchain.swapchain;
         self.swapchain_format = new_swapchain.swapchain_format;
         self.swapchain_extent = new_swapchain.swapchain_extent;

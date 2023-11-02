@@ -16,7 +16,7 @@ pub mod prelude {
         objects::{
             Attachment, AttachmentInfo, AttachmentReference, BorrowedImage, BufferInfo,
             BufferInfoBuilder, CommandBuffer, CommandPool, Fence, GraphicsPipeline,
-            GraphicsPipelineInfo, GraphicsPipelineInfoBuilder, Image, NewImageInfo, OwnedImage,
+            GraphicsPipelineInfo, GraphicsPipelineInfoBuilder, Image, ImageInfo, OwnedImage,
             RenderPass, Semaphore, Shader, Subpass, UntypedBuffer,
         },
         stager::VulkanStager,

@@ -111,17 +111,11 @@ impl VulkanStager {
     }
 
     pub fn update(&mut self) {
-        // Clear tasks and reset staging buffer offsets
-        if self.recorded_immediate_tasks as usize != self.immediate_tasks.len() {
-            dbg!(
-                "{} staging tasks not submitted to GPU before next frame!",
-                self.immediate_tasks.len() - self.recorded_immediate_tasks as usize
-            );
-        }
-        self.immediate_tasks.clear();
-        self.recorded_immediate_tasks = 0;
-        for (_, staging_buffer) in &mut self.staging_buffers {
-            staging_buffer.current_offset = 0;
+        // Reset staging buffer offsets if we have no immediate tasks using them.
+        if self.immediate_tasks.is_empty() {
+            for (_, staging_buffer) in &mut self.staging_buffers {
+                staging_buffer.current_offset = 0;
+            }
         }
     }
 
@@ -312,8 +306,7 @@ impl VulkanStager {
                     ref image,
                     subresource,
                     extent,
-                    final_layout,
-                    final_access,
+                    ..
                 } => {
                     let src_buffer = self.staging_buffers.get(&task.src_buffer).unwrap();
                     command_buffer.copy_buffer_to_image(
@@ -326,7 +319,6 @@ impl VulkanStager {
                 }
             }
             used_staging_buffers.insert(task.src_buffer);
-            self.recorded_immediate_tasks += 1;
         }
 
         let image_memory_barriers = dst_image_tasks
@@ -347,6 +339,8 @@ impl VulkanStager {
             &[],
             &image_memory_barriers,
         );
+
+        self.immediate_tasks.clear();
 
         used_staging_buffers
             .into_iter()

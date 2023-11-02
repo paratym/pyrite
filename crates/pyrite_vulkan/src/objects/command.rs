@@ -1,7 +1,10 @@
-use crate::{GraphicsPipeline, Image, InternalImage, RenderPass, UntypedBuffer, Vulkan, VulkanDep};
+use crate::{
+    DescriptorSet, GraphicsPipeline, Image, InternalImage, RenderPass, UntypedBuffer, Vulkan,
+    VulkanDep,
+};
 use ash::vk;
 use pyrite_util::Dependable;
-use std::sync::Arc;
+use std::{any::Any, sync::Arc};
 
 pub struct CommandPool {
     internal: Arc<InternalCommandPool>,
@@ -50,6 +53,7 @@ impl CommandPool {
             .map(|command_buffer| CommandBuffer {
                 command_pool: self.internal.clone(),
                 command_buffer,
+                used_objects: Vec::new(),
             })
             .collect()
     }
@@ -72,10 +76,8 @@ impl Drop for InternalCommandPool {
 
 pub struct CommandBuffer {
     command_pool: Arc<InternalCommandPool>,
-
-    // Safety: Command pool is kept as a reference so this command buffer is valid for it's
-    // lifetime.
     command_buffer: vk::CommandBuffer,
+    used_objects: Vec<Arc<dyn Any + Send + Sync>>,
 }
 
 impl CommandBuffer {
@@ -114,7 +116,27 @@ impl CommandBuffer {
         }
     }
 
-    pub fn bind_graphics_pipeline(&self, graphics_pipeline: &GraphicsPipeline) {
+    pub fn dynamic_state_viewport(&self, viewport: vk::Viewport) {
+        unsafe {
+            self.command_pool.vulkan_dep.device().cmd_set_viewport(
+                self.command_buffer,
+                0,
+                &[viewport],
+            );
+        }
+    }
+
+    pub fn dynamic_state_scissor(&self, scissor: vk::Rect2D) {
+        unsafe {
+            self.command_pool.vulkan_dep.device().cmd_set_scissor(
+                self.command_buffer,
+                0,
+                &[scissor],
+            );
+        }
+    }
+
+    pub fn bind_graphics_pipeline(&mut self, graphics_pipeline: &GraphicsPipeline) {
         // Safety: Since graphics_pipeline is by reference it is guaranteed to be valid here.
         unsafe {
             self.command_pool.vulkan_dep.device().cmd_bind_pipeline(
@@ -123,6 +145,7 @@ impl CommandBuffer {
                 graphics_pipeline.pipeline(),
             );
         }
+        self.used_objects.push(graphics_pipeline.create_dep());
     }
 
     pub fn begin_render_pass(
@@ -227,6 +250,88 @@ impl CommandBuffer {
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     &regions,
                 )
+        }
+    }
+
+    pub fn bind_vertex_buffer(&mut self, location: u32, buffer: &Arc<UntypedBuffer>) {
+        let offsets = [0];
+
+        // Safety: Since buffer is by reference it is guaranteed to be valid here. We are keeping
+        // the buffer alive until the command buffer is dropped or reset.
+        unsafe {
+            self.command_pool
+                .vulkan_dep
+                .device()
+                .cmd_bind_vertex_buffers(
+                    self.command_buffer,
+                    location,
+                    &[buffer.buffer()],
+                    &offsets,
+                );
+        }
+        self.used_objects.push(buffer.clone());
+    }
+
+    pub fn bind_index_buffer(&mut self, buffer: &Arc<UntypedBuffer>, index_type: vk::IndexType) {
+        // Safety: Since buffer is by reference it is guaranteed to be valid here. We are keeping
+        // the buffer alive until the command buffer is dropped or reset.
+        unsafe {
+            self.command_pool.vulkan_dep.device().cmd_bind_index_buffer(
+                self.command_buffer,
+                buffer.buffer(),
+                0,
+                index_type,
+            );
+        }
+        self.used_objects.push(buffer.clone());
+    }
+
+    pub fn draw_indexed(
+        &self,
+        vertex_count: u32,
+        instance_count: u32,
+        first_index: u32,
+        vertex_offset: i32,
+        first_instance: u32,
+    ) {
+        unsafe {
+            self.command_pool.vulkan_dep.device().cmd_draw_indexed(
+                self.command_buffer,
+                vertex_count,
+                instance_count,
+                first_index,
+                vertex_offset,
+                first_instance,
+            );
+        }
+    }
+
+    pub fn bind_descriptor_sets(
+        &mut self,
+        bind_point: vk::PipelineBindPoint,
+        pipeline_layout: vk::PipelineLayout,
+        descriptor_sets: &[&DescriptorSet],
+    ) {
+        for descriptor_set in descriptor_sets {
+            self.used_objects.push(descriptor_set.create_dep());
+        }
+
+        let descriptor_sets = descriptor_sets
+            .iter()
+            .map(|descriptor_set| descriptor_set.descriptor_set())
+            .collect::<Vec<_>>();
+        unsafe {
+            self.command_pool
+                .vulkan_dep
+                .device()
+                .cmd_bind_descriptor_sets(
+                    self.command_buffer,
+                    bind_point,
+                    pipeline_layout,
+                    0,
+                    &descriptor_sets,
+                    &[],
+                );
         }
     }
 

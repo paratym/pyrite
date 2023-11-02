@@ -1129,6 +1129,7 @@ dependencies = [
  "pyrite_asset",
  "pyrite_desktop",
  "pyrite_input",
+ "pyrite_render",
  "pyrite_util",
  "pyrite_vulkan",
 ]
@@ -1181,6 +1182,18 @@ name = "pyrite_input"
 version = "0.1.0"
 dependencies = [
  "pyrite_app",
+]
+
+[[package]]
+name = "pyrite_render"
+version = "0.1.0"
+dependencies = [
+ "ash",
+ "pyrite_app",
+ "pyrite_desktop",
+ "pyrite_util",
+ "pyrite_vulkan",
+ "uuid",
 ]
 
 [[package]]
@@ -1314,6 +1327,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "567664f262709473930a4bf9e51bf2ebf3348f2e748ccc50dea20646858f8f29"
 dependencies = [
  "bitflags 1.3.2",
+]
+
+[[package]]
+name = "render_manager_example"
+version = "1.0.0"
+dependencies = [
+ "ash",
+ "pyrite",
 ]
 
 [[package]]

@@ -1,4 +1,4 @@
-use crate::AssetLoader;
+use crate::{AssetLoadError, AssetLoader};
 
 pub struct Gltf {
     pub document: gltf::Document,
@@ -24,16 +24,16 @@ impl AssetLoader for GltfLoader {
         Self {}
     }
 
-    fn load(&self, file_path: String) -> Self::Asset
+    fn load(&self, file_path: String) -> Result<Self::Asset, AssetLoadError>
     where
         Self: Sized,
     {
         let (document, buffers, images) = gltf::import(file_path).unwrap();
-        Gltf {
+        Ok(Gltf {
             document,
             buffers,
             images,
-        }
+        })
     }
 
     fn identifiers() -> &'static [&'static str] {
