@@ -50,6 +50,7 @@ pub struct GraphicsPipelineInfo {
     dynamic_state: vk::PipelineDynamicStateCreateInfo,
     render_pass: RenderPass,
     descriptor_set_layouts: Vec<DescriptorSetLayoutDep>,
+    push_constant_ranges: Vec<vk::PushConstantRange>,
 }
 
 impl GraphicsPipelineInfo {
@@ -71,6 +72,7 @@ pub struct GraphicsPipelineInfoBuilder {
     dynamic_state: vk::PipelineDynamicStateCreateInfo,
     render_pass: Option<RenderPass>,
     descriptor_set_layouts: Vec<DescriptorSetLayoutDep>,
+    push_constant_ranges: Vec<vk::PushConstantRange>,
 }
 
 impl Default for GraphicsPipelineInfoBuilder {
@@ -102,6 +104,7 @@ impl Default for GraphicsPipelineInfoBuilder {
             dynamic_state: vk::PipelineDynamicStateCreateInfo::default(),
             render_pass: None,
             descriptor_set_layouts: Vec::new(),
+            push_constant_ranges: Vec::new(),
         }
     }
 }
@@ -197,6 +200,14 @@ impl GraphicsPipelineInfoBuilder {
         self
     }
 
+    pub fn push_constant_ranges(
+        mut self,
+        push_constant_ranges: Vec<vk::PushConstantRange>,
+    ) -> Self {
+        self.push_constant_ranges = push_constant_ranges;
+        self
+    }
+
     pub fn build(self) -> GraphicsPipelineInfo {
         GraphicsPipelineInfo {
             vertex_shader: self.vertex_shader.unwrap(),
@@ -211,6 +222,7 @@ impl GraphicsPipelineInfoBuilder {
             dynamic_state: self.dynamic_state,
             render_pass: self.render_pass.unwrap(),
             descriptor_set_layouts: self.descriptor_set_layouts,
+            push_constant_ranges: self.push_constant_ranges,
         }
     }
 }
@@ -259,8 +271,10 @@ impl GraphicsPipelineInner {
             .iter()
             .map(|layout| layout.descriptor_set_layout())
             .collect::<Vec<_>>();
+        let push_constant_ranges = info.push_constant_ranges;
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
             .set_layouts(&descriptor_set_layouts)
+            .push_constant_ranges(&push_constant_ranges)
             .build();
 
         // Safety: The pipeline layout is dropped when the internal pipeline is dropped

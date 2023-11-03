@@ -2,6 +2,7 @@ use crate::{UntypedBuffer, Vulkan, VulkanDep};
 use ash::vk;
 use pyrite_util::Dependable;
 use std::{
+    any::Any,
     ops::Deref,
     sync::{Arc, RwLock, Weak},
 };
@@ -261,6 +262,16 @@ impl DescriptorSetInner {
 
     pub fn descriptor_set(&self) -> vk::DescriptorSet {
         self.descriptor_set
+    }
+
+    pub fn used_objects(&self) -> Vec<Weak<dyn Any + Send + Sync>> {
+        self.used_buffers
+            .read()
+            .unwrap()
+            .clone()
+            .into_iter()
+            .map(|obj| obj as Weak<dyn Any + Send + Sync>)
+            .collect()
     }
 }
 

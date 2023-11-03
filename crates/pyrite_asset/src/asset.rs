@@ -183,15 +183,14 @@ impl<T: Send + Sync + 'static> ErasedHandle for Arc<HandleInner<T>> {
                 .downcast::<T>()
                 .expect("Failed to downcast asset to expected type"),
         );
-        self.is_loaded.swap(true, atomic::Ordering::Relaxed);
         self.is_error.swap(false, atomic::Ordering::Relaxed);
+        self.is_loaded.swap(true, atomic::Ordering::Relaxed);
+        println!("Loaded asset for the first time: {:?}", self.file_path);
     }
 
     fn update_error(&self, error: AssetLoadError) {
         #[cfg(debug_assertions)]
-        if !self.is_loaded() {
-            println!("Error loading asset for the first time: {:?}", error);
-        }
+        println!("Error loading asset for the first time: {:?}", error);
 
         self.error.write().replace(error);
         self.is_error.swap(true, atomic::Ordering::Relaxed);

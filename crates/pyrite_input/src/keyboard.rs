@@ -3,6 +3,7 @@ use std::collections::HashSet;
 pub struct Keyboard {
     pressed_keys: HashSet<Key>,
     down_keys: HashSet<Key>,
+    repeated_keys: HashSet<Key>,
     released_keys: HashSet<Key>,
 }
 
@@ -11,6 +12,7 @@ impl Keyboard {
         Self {
             pressed_keys: HashSet::new(),
             down_keys: HashSet::new(),
+            repeated_keys: HashSet::new(),
             released_keys: HashSet::new(),
         }
     }
@@ -25,11 +27,15 @@ impl Keyboard {
                 self.released_keys.insert(key);
                 self.down_keys.remove(&key);
             }
+            SubmitInput::Repeated(key) => {
+                self.repeated_keys.insert(key);
+            }
         }
     }
 
     pub fn clear_inputs(&mut self) {
         self.pressed_keys.clear();
+        self.repeated_keys.clear();
         self.released_keys.clear();
     }
 
@@ -53,6 +59,10 @@ impl Keyboard {
         self.down_keys.contains(&key)
     }
 
+    pub fn is_key_repeat(&self, key: Key) -> bool {
+        self.repeated_keys.contains(&key)
+    }
+
     pub fn is_key_released(&self, key: Key) -> bool {
         self.released_keys.contains(&key)
     }
@@ -73,6 +83,7 @@ impl Keyboard {
 
 pub enum SubmitInput {
     Pressed(Key),
+    Repeated(Key),
     Released(Key),
 }
 

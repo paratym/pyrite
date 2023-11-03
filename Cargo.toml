@@ -5,6 +5,7 @@ members = [
   "crates/pyrite_app/macros",
   "crates/pyrite_asset",
   "crates/pyrite_desktop",
+  "crates/pyrite_imgui",
   "crates/pyrite_input",
   "crates/pyrite_render",
   "crates/pyrite_util",

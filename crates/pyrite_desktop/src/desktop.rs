@@ -1,7 +1,8 @@
 use pyrite_asset::{loaders::gltf::GltfLoader, Assets};
 use winit::{
     event::{
-        DeviceEvent as WinitDeviceEvent, Event as WinitEvent, WindowEvent as WinitWindowEvent,
+        DeviceEvent as WinitDeviceEvent, ElementState, Event as WinitEvent,
+        WindowEvent as WinitWindowEvent,
     },
     event_loop::EventLoop,
 };
@@ -160,6 +161,16 @@ pub fn setup_desktop_preset(app_builder: &mut AppBuilder, config: DesktopConfig)
                                 position.x as f32,
                                 position.y as f32,
                             ));
+                    }
+                    WinitWindowEvent::KeyboardInput { event, .. } => {
+                        if event.repeat && event.state == ElementState::Pressed {
+                            if let Some(key) = to_pyrite_key(event.physical_key) {
+                                application
+                                    .get_resource_mut::<Input>()
+                                    .keyboard_mut()
+                                    .submit_input(keyboard::SubmitInput::Repeated(key));
+                            }
+                        }
                     }
                     _ => (),
                 },

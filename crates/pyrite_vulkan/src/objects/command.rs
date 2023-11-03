@@ -4,7 +4,7 @@ use crate::{
 };
 use ash::vk;
 use pyrite_util::Dependable;
-use std::{any::Any, sync::Arc};
+use std::{any::Any, slice::SliceIndex, sync::Arc};
 
 pub struct CommandPool {
     internal: Arc<InternalCommandPool>,
@@ -314,6 +314,12 @@ impl CommandBuffer {
     ) {
         for descriptor_set in descriptor_sets {
             self.used_objects.push(descriptor_set.create_dep());
+            for obj in descriptor_set.used_objects() {
+                self.used_objects.push(
+                    obj.upgrade()
+                        .expect("Tried to bind descriptor set written with null objects."),
+                );
+            }
         }
 
         let descriptor_sets = descriptor_sets
@@ -333,6 +339,37 @@ impl CommandBuffer {
                     &[],
                 );
         }
+    }
+
+    pub unsafe fn write_push_constants(
+        &self,
+        pipeline_layout: vk::PipelineLayout,
+        stage_flags: vk::ShaderStageFlags,
+        offset: u32,
+        data: &[u8],
+    ) {
+        unsafe {
+            self.command_pool.vulkan_dep.device().cmd_push_constants(
+                self.command_buffer,
+                pipeline_layout,
+                stage_flags,
+                offset,
+                data,
+            );
+        }
+    }
+
+    pub fn write_push_constants_typed<T>(
+        &self,
+        pipeline_layout: vk::PipelineLayout,
+        stage_flags: vk::ShaderStageFlags,
+        offset: u32,
+        data: &T,
+    ) {
+        let data = unsafe {
+            std::slice::from_raw_parts(data as *const T as *const u8, std::mem::size_of::<T>())
+        };
+        unsafe { self.write_push_constants(pipeline_layout, stage_flags, offset, data) };
     }
 
     pub fn command_buffer(&self) -> vk::CommandBuffer {

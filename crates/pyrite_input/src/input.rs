@@ -56,6 +56,12 @@ impl Input {
         self.keyboard.is_key_down(key)
     }
 
+    /// Returns true if the key is being viewed as held by the OS.
+    /// Mainly used for text input.
+    pub fn is_key_repeat(&self, key: keyboard::Key) -> bool {
+        self.keyboard.is_key_repeat(key)
+    }
+
     pub fn is_key_released(&self, key: keyboard::Key) -> bool {
         self.keyboard.is_key_released(key)
     }

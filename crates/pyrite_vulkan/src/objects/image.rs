@@ -191,7 +191,7 @@ impl Image {
         }
     }
 
-    pub fn as_color_attachment(&self, attachment_info: AttachmentInfo) -> Attachment {
+    pub fn as_attachment(&self, attachment_info: AttachmentInfo) -> Attachment {
         Attachment::new(self, attachment_info)
     }
 

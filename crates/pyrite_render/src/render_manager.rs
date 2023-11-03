@@ -114,6 +114,7 @@ impl RenderManagerConfigBuilder {
 #[derive(Clone)]
 pub struct FrameConfig {
     pub backbuffer_final_layout: vk::ImageLayout,
+    pub used_objects: Vec<Arc<dyn Any + Send + Sync>>,
 }
 
 impl Drop for RenderManager {
@@ -248,6 +249,10 @@ impl RenderManager {
             .frame_config
             .clone()
             .expect("Frame config not set.");
+
+        for obj in frame_config.used_objects {
+            render_manager.used_objects.push(obj);
+        }
 
         // Process the current frame..
         {
