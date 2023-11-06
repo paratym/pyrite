@@ -1,6 +1,6 @@
 use crate::{
-    DescriptorSet, GraphicsPipeline, Image, InternalImage, RenderPass, UntypedBuffer, Vulkan,
-    VulkanDep,
+    ComputePipeline, DescriptorSet, GraphicsPipeline, Image, InternalImage, RenderPass,
+    UntypedBuffer, Vulkan, VulkanDep,
 };
 use ash::vk;
 use pyrite_util::Dependable;
@@ -146,6 +146,27 @@ impl CommandBuffer {
             );
         }
         self.used_objects.push(graphics_pipeline.create_dep());
+    }
+
+    pub fn dispatch_compute(&self, x: u32, y: u32, z: u32) {
+        unsafe {
+            self.command_pool
+                .vulkan_dep
+                .device()
+                .cmd_dispatch(self.command_buffer, x, y, z);
+        }
+    }
+
+    pub fn bind_compute_pipeline(&mut self, compute_pipeline: &ComputePipeline) {
+        // Safety: Since compute_pipeline is by reference it is guaranteed to be valid here.
+        unsafe {
+            self.command_pool.vulkan_dep.device().cmd_bind_pipeline(
+                self.command_buffer,
+                vk::PipelineBindPoint::COMPUTE,
+                compute_pipeline.pipeline(),
+            );
+        }
+        self.used_objects.push(compute_pipeline.create_dep());
     }
 
     pub fn begin_render_pass(

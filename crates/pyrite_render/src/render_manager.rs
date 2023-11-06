@@ -9,8 +9,8 @@ use pyrite_desktop::{POST_RENDER_STAGE, PRE_RENDER_STAGE};
 use pyrite_util::Dependable;
 use pyrite_vulkan::{
     swapchain::{Swapchain, SwapchainDep},
-    CommandBuffer, CommandPool, Fence, Image, ImageInfo, Semaphore, Vulkan, VulkanAllocator,
-    VulkanDep,
+    CommandBuffer, CommandPool, Fence, Image, ImageDep, ImageInfo, Semaphore, Vulkan,
+    VulkanAllocator, VulkanDep,
 };
 
 pub fn setup_render_manager(app_builder: &mut AppBuilder, config: &RenderManagerConfig) {
@@ -33,7 +33,6 @@ pub struct RenderManager {
     _swapchain_dep: SwapchainDep,
     command_pool: CommandPool,
     frames: Vec<Frame>,
-    backbuffer_image: Image,
     frame_config: Option<FrameConfig>,
 
     frame_index: usize,
@@ -60,8 +59,6 @@ impl Frame {
 #[derive(Clone)]
 pub struct RenderManagerConfig {
     frames_in_flight: u32,
-    resolution: (u32, u32),
-    backbuffer_image_usage: vk::ImageUsageFlags,
 }
 
 impl RenderManagerConfig {
@@ -72,16 +69,12 @@ impl RenderManagerConfig {
 
 pub struct RenderManagerConfigBuilder {
     frames_in_flight: u32,
-    resolution: (u32, u32),
-    backbuffer_image_usage: vk::ImageUsageFlags,
 }
 
 impl Default for RenderManagerConfigBuilder {
     fn default() -> Self {
         Self {
             frames_in_flight: 2,
-            resolution: (1280, 720),
-            backbuffer_image_usage: vk::ImageUsageFlags::TRANSFER_SRC,
         }
     }
 }
@@ -92,29 +85,77 @@ impl RenderManagerConfigBuilder {
         self
     }
 
-    pub fn resolution(mut self, resolution: (u32, u32)) -> Self {
-        self.resolution = resolution;
-        self
-    }
-
-    pub fn backbuffer_image_usage(mut self, backbuffer_image_usage: vk::ImageUsageFlags) -> Self {
-        self.backbuffer_image_usage = backbuffer_image_usage;
-        self
-    }
-
     pub fn build(self) -> RenderManagerConfig {
         RenderManagerConfig {
             frames_in_flight: self.frames_in_flight,
-            resolution: self.resolution,
-            backbuffer_image_usage: self.backbuffer_image_usage,
         }
     }
 }
 
 #[derive(Clone)]
 pub struct FrameConfig {
-    pub backbuffer_final_layout: vk::ImageLayout,
-    pub used_objects: Vec<Arc<dyn Any + Send + Sync>>,
+    backbuffer_image: ImageDep,
+    backbuffer_final_layout: vk::ImageLayout,
+    backbuffer_final_access: vk::AccessFlags,
+    used_objects: Vec<Arc<dyn Any + Send + Sync>>,
+}
+
+impl FrameConfig {
+    pub fn builder() -> FrameConfigBuilder<'static> {
+        FrameConfigBuilder::default()
+    }
+}
+
+pub struct FrameConfigBuilder<'a> {
+    backbuffer_image: Option<&'a Image>,
+    backbuffer_final_layout: vk::ImageLayout,
+    backbuffer_final_access: vk::AccessFlags,
+    used_objects: Vec<Arc<dyn Any + Send + Sync>>,
+}
+
+impl Default for FrameConfigBuilder<'_> {
+    fn default() -> Self {
+        Self {
+            backbuffer_image: None,
+            backbuffer_final_layout: vk::ImageLayout::UNDEFINED,
+            backbuffer_final_access: vk::AccessFlags::empty(),
+            used_objects: Vec::new(),
+        }
+    }
+}
+
+impl<'a> FrameConfigBuilder<'a> {
+    pub fn backbuffer(
+        mut self,
+        image: &'a Image,
+        layout: vk::ImageLayout,
+        access: vk::AccessFlags,
+    ) -> Self {
+        self.backbuffer_image = Some(image);
+        self.backbuffer_final_layout = layout;
+        self.backbuffer_final_access = access;
+        self
+    }
+
+    pub fn used_objects(mut self, used_objects: Vec<Arc<dyn Any + Send + Sync>>) -> Self {
+        self.used_objects = used_objects;
+        self
+    }
+
+    pub fn build(mut self) -> FrameConfig {
+        if self.backbuffer_image.is_none() {
+            panic!("Backbuffer image not set.");
+        }
+
+        self.used_objects
+            .push(self.backbuffer_image.unwrap().create_dep() as Arc<dyn Any + Send + Sync>);
+        FrameConfig {
+            backbuffer_image: self.backbuffer_image.unwrap().create_dep(),
+            backbuffer_final_layout: self.backbuffer_final_layout,
+            backbuffer_final_access: self.backbuffer_final_access,
+            used_objects: self.used_objects,
+        }
+    }
 }
 
 impl Drop for RenderManager {
@@ -145,35 +186,15 @@ impl RenderManager {
             })
             .collect();
 
-        let backbuffer_image = Image::new(
-            vulkan,
-            vulkan_allocator,
-            &ImageInfo::builder()
-                .extent(
-                    vk::Extent3D::builder()
-                        .width(config.resolution.0)
-                        .height(config.resolution.1)
-                        .depth(1)
-                        .build(),
-                )
-                .usage(config.backbuffer_image_usage | vk::ImageUsageFlags::TRANSFER_SRC)
-                .build(),
-        );
-
         Self {
             vulkan_dep: vulkan.create_dep(),
             _swapchain_dep: swapchain.create_dep(),
             command_pool,
             frames,
-            backbuffer_image,
             frame_config: None,
             frame_index: 0,
             used_objects: Vec::new(),
         }
-    }
-
-    pub fn backbuffer_image(&self) -> &Image {
-        &self.backbuffer_image
     }
 
     pub fn frame(&self) -> &Frame {
@@ -247,7 +268,7 @@ impl RenderManager {
         let render_manager = &mut *render_manager;
         let frame_config = render_manager
             .frame_config
-            .clone()
+            .take()
             .expect("Frame config not set.");
 
         for obj in frame_config.used_objects {
@@ -281,12 +302,12 @@ impl RenderManager {
                 &[],
                 &[],
                 &[
-                    render_manager
-                        .backbuffer_image
-                        .default_image_memory_barrier(
-                            frame_config.backbuffer_final_layout,
-                            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                        ),
+                    frame_config.backbuffer_image.image_memory_barrier(
+                        frame_config.backbuffer_final_layout,
+                        vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                        frame_config.backbuffer_final_access,
+                        vk::AccessFlags::TRANSFER_READ,
+                    ),
                     swapchain_image.default_image_memory_barrier(
                         vk::ImageLayout::UNDEFINED,
                         vk::ImageLayout::TRANSFER_DST_OPTIMAL,
@@ -307,8 +328,8 @@ impl RenderManager {
                 .src_offsets([
                     vk::Offset3D::builder().x(0).y(0).z(0).build(),
                     vk::Offset3D::builder()
-                        .x(render_manager.backbuffer_image.image_extent().width as i32)
-                        .y(render_manager.backbuffer_image.image_extent().height as i32)
+                        .x(frame_config.backbuffer_image.image_extent().width as i32)
+                        .y(frame_config.backbuffer_image.image_extent().height as i32)
                         .z(1)
                         .build(),
                 ])
@@ -332,7 +353,7 @@ impl RenderManager {
             unsafe {
                 render_manager.vulkan_dep.device().cmd_blit_image(
                     command_buffer.command_buffer(),
-                    render_manager.backbuffer_image.image(),
+                    frame_config.backbuffer_image.image(),
                     vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                     swapchain_image.image(),
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,

@@ -1,17 +1,21 @@
 mod buffer;
 mod command;
 mod common;
+mod compute_pipeline;
 mod descriptor_set;
 mod graphics_pipeline;
 mod image;
+mod sampler;
 mod shader;
 mod sync;
 
 pub use buffer::*;
 pub use command::*;
 pub use common::*;
+pub use compute_pipeline::*;
 pub use descriptor_set::*;
 pub use graphics_pipeline::*;
 pub use image::*;
+pub use sampler::*;
 pub use shader::*;
 pub use sync::*;

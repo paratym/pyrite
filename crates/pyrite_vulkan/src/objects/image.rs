@@ -233,9 +233,7 @@ pub trait InternalImage: Send + Sync {
                 vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
             }
             vk::ImageLayout::TRANSFER_SRC_OPTIMAL => vk::AccessFlags::TRANSFER_READ,
-            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => {
-                vk::AccessFlags::SHADER_READ | vk::AccessFlags::INPUT_ATTACHMENT_READ
-            }
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => vk::AccessFlags::SHADER_READ,
             vk::ImageLayout::PRESENT_SRC_KHR => vk::AccessFlags::MEMORY_READ,
             _ => panic!("Unsupported layout transition"),
         };
@@ -249,6 +247,24 @@ pub trait InternalImage: Send + Sync {
             .subresource_range(self.default_subresource_range())
             .build()
     }
+
+    fn image_memory_barrier(
+        &self,
+        old_layout: vk::ImageLayout,
+        new_layout: vk::ImageLayout,
+        src_access_mask: vk::AccessFlags,
+        dst_access_mask: vk::AccessFlags,
+    ) -> vk::ImageMemoryBarrier {
+        vk::ImageMemoryBarrier::builder()
+            .image(self.image())
+            .old_layout(old_layout)
+            .new_layout(new_layout)
+            .src_access_mask(src_access_mask)
+            .dst_access_mask(dst_access_mask)
+            .subresource_range(self.default_subresource_range())
+            .build()
+    }
+
     fn default_subresource_range(&self) -> vk::ImageSubresourceRange {
         vk::ImageSubresourceRange::builder()
             .aspect_mask(vk::ImageAspectFlags::COLOR)

@@ -1,4 +1,4 @@
-use crate::{UntypedBuffer, Vulkan, VulkanDep};
+use crate::{Image, Sampler, UntypedBuffer, Vulkan, VulkanDep};
 use ash::vk;
 use pyrite_util::Dependable;
 use std::{
@@ -213,10 +213,7 @@ pub struct DescriptorSetInner {
     _descriptor_layout_dep: DescriptorSetLayoutDep,
     descriptor_set: vk::DescriptorSet,
 
-    /// Used to track which buffers the descriptor set points to so when this set is bound, the
-    /// associated buffers can be bound as well. This value is mutation only so this should not be
-    /// blocking.
-    used_buffers: RwLock<Vec<Weak<UntypedBuffer>>>,
+    used_objects: RwLock<Vec<Weak<dyn Any + Send + Sync>>>,
 }
 
 impl Drop for DescriptorSetInner {
@@ -244,12 +241,12 @@ impl DescriptorSetInner {
             descriptor_pool_dep: descriptor_pool.internal.clone(),
             _descriptor_layout_dep: descriptor_set_layout.create_dep(),
             descriptor_set,
-            used_buffers: RwLock::new(Vec::new()),
+            used_objects: RwLock::new(Vec::new()),
         }
     }
 
     pub unsafe fn update_descriptor_set(&self, descriptor_writes: &[vk::WriteDescriptorSet]) {
-        self.used_buffers.write().unwrap().clear();
+        self.used_objects.write().unwrap().clear();
         self.descriptor_pool_dep
             .vulkan_dep
             .device()
@@ -265,13 +262,7 @@ impl DescriptorSetInner {
     }
 
     pub fn used_objects(&self) -> Vec<Weak<dyn Any + Send + Sync>> {
-        self.used_buffers
-            .read()
-            .unwrap()
-            .clone()
-            .into_iter()
-            .map(|obj| obj as Weak<dyn Any + Send + Sync>)
-            .collect()
+        self.used_objects.read().unwrap().clone()
     }
 }
 
@@ -279,7 +270,8 @@ pub struct DescriptorSetWriter<'a> {
     descriptor_set: &'a DescriptorSetInner,
     descriptor_writes: Vec<vk::WriteDescriptorSet>,
     buffer_infos: Vec<vk::DescriptorBufferInfo>,
-    used_buffers: Vec<Weak<UntypedBuffer>>,
+    image_infos: Vec<vk::DescriptorImageInfo>,
+    used_objects: Vec<Weak<dyn Any + Send + Sync>>,
 }
 
 impl<'a> DescriptorSetWriter<'a> {
@@ -288,7 +280,8 @@ impl<'a> DescriptorSetWriter<'a> {
             descriptor_set,
             descriptor_writes: Vec::new(),
             buffer_infos: Vec::new(),
-            used_buffers: Vec::new(),
+            image_infos: Vec::new(),
+            used_objects: Vec::new(),
         }
     }
 
@@ -310,7 +303,65 @@ impl<'a> DescriptorSetWriter<'a> {
                 .buffer_info(std::slice::from_ref(buffer_info))
                 .build(),
         );
-        self.used_buffers.push(Arc::downgrade(buffer));
+        self.used_objects
+            .push(Arc::downgrade(buffer) as Weak<dyn Any + Send + Sync>);
+        self
+    }
+
+    pub fn set_storage_image(mut self, binding: u32, image: &Image) -> Self {
+        self.image_infos.push(
+            vk::DescriptorImageInfo::builder()
+                .image_view(image.image_view())
+                .image_layout(vk::ImageLayout::GENERAL)
+                .build(),
+        );
+        let image_info = self.image_infos.get(self.image_infos.len() - 1).unwrap();
+
+        self.descriptor_writes.push(
+            vk::WriteDescriptorSet::builder()
+                .dst_set(self.descriptor_set.descriptor_set())
+                .dst_binding(binding)
+                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                .image_info(std::slice::from_ref(image_info))
+                .build(),
+        );
+
+        self.used_objects
+            .push(Arc::downgrade(&image.create_dep()) as Weak<dyn Any + Send + Sync>);
+
+        self
+    }
+
+    pub fn set_combined_image_sampler(
+        mut self,
+        binding: u32,
+        image_layout: vk::ImageLayout,
+        image: &Image,
+        sampler: &Sampler,
+    ) -> Self {
+        self.image_infos.push(
+            vk::DescriptorImageInfo::builder()
+                .image_view(image.image_view())
+                .image_layout(image_layout)
+                .sampler(sampler.sampler())
+                .build(),
+        );
+        let image_info = self.image_infos.get(self.image_infos.len() - 1).unwrap();
+
+        self.descriptor_writes.push(
+            vk::WriteDescriptorSet::builder()
+                .dst_set(self.descriptor_set.descriptor_set())
+                .dst_binding(binding)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .image_info(std::slice::from_ref(image_info))
+                .build(),
+        );
+
+        self.used_objects
+            .push(Arc::downgrade(&image.create_dep()) as Weak<dyn Any + Send + Sync>);
+        self.used_objects
+            .push(Arc::downgrade(&sampler.create_dep()) as Weak<dyn Any + Send + Sync>);
+
         self
     }
 
@@ -323,8 +374,8 @@ impl<'a> DescriptorSetWriter<'a> {
                 .update_descriptor_set(&self.descriptor_writes)
         };
 
-        let mut descriptor_set_used_buffers = self.descriptor_set.used_buffers.write().unwrap();
+        let mut descriptor_set_used_buffers = self.descriptor_set.used_objects.write().unwrap();
         descriptor_set_used_buffers.clear();
-        descriptor_set_used_buffers.extend(self.used_buffers);
+        descriptor_set_used_buffers.extend(self.used_objects);
     }
 }
