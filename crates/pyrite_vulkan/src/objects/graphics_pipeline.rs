@@ -352,6 +352,7 @@ impl RenderPass {
                 subpass
                     .color_attachments
                     .iter()
+                    .chain(&subpass.resolve_attachments)
                     .chain(&subpass.depth_attachment)
                     .map(|attachment_reference| {
                         let attachment = attachment_reference.attachment.clone();
@@ -385,6 +386,19 @@ impl RenderPass {
                             .build()
                     })
                     .collect::<Vec<_>>();
+                let resolve_attachments = subpass
+                    .resolve_attachments
+                    .iter()
+                    .map(|attachment_reference| {
+                        vk::AttachmentReference::builder()
+                            .attachment(
+                                attachment_indices
+                                    [&attachment_reference.attachment.image_dep.image()],
+                            )
+                            .layout(attachment_reference.layout)
+                            .build()
+                    })
+                    .collect::<Vec<_>>();
                 let depth_attachment =
                     subpass
                         .depth_attachment
@@ -399,7 +413,7 @@ impl RenderPass {
                                 .build()
                         });
 
-                (color_attachments, depth_attachment)
+                (color_attachments, resolve_attachments, depth_attachment)
             })
             .collect::<Vec<_>>();
 
@@ -407,17 +421,20 @@ impl RenderPass {
 
         let subpass_descriptions = subpass_attachments_references
             .iter()
-            .map(|(color_attachments, depth_attachment)| {
-                let mut builder = vk::SubpassDescription::builder()
-                    .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-                    .color_attachments(color_attachments);
+            .map(
+                |(color_attachments, resolve_attachments, depth_attachment)| {
+                    let mut builder = vk::SubpassDescription::builder()
+                        .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+                        .color_attachments(color_attachments)
+                        .resolve_attachments(resolve_attachments);
 
-                if let Some(depth_attachment) = depth_attachment {
-                    builder = builder.depth_stencil_attachment(depth_attachment)
-                }
+                    if let Some(depth_attachment) = depth_attachment {
+                        builder = builder.depth_stencil_attachment(depth_attachment)
+                    }
 
-                builder.build()
-            })
+                    builder.build()
+                },
+            )
             .collect::<Vec<_>>();
 
         let mut attachment_descriptions = attachments
@@ -567,6 +584,7 @@ impl Drop for InternalRenderPass {
 
 pub struct Subpass {
     pub color_attachments: Vec<AttachmentReference>,
+    pub resolve_attachments: Vec<AttachmentReference>,
     pub depth_attachment: Option<AttachmentReference>,
     pub input_attachments: Vec<AttachmentReference>,
 }
@@ -575,6 +593,7 @@ impl Subpass {
     pub fn new() -> Self {
         Self {
             color_attachments: Vec::new(),
+            resolve_attachments: Vec::new(),
             depth_attachment: None,
             input_attachments: Vec::new(),
         }
@@ -582,6 +601,11 @@ impl Subpass {
 
     pub fn color_attachment(&mut self, attachment: &Attachment) {
         self.color_attachments
+            .push(attachment.reference(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL));
+    }
+
+    pub fn resolve_attachment(&mut self, attachment: &Attachment) {
+        self.resolve_attachments
             .push(attachment.reference(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL));
     }
 

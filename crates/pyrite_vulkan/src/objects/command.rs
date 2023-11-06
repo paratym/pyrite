@@ -116,6 +116,26 @@ impl CommandBuffer {
         }
     }
 
+    pub fn resolve_image(
+        &self,
+        src_image: &dyn InternalImage,
+        src_layout: vk::ImageLayout,
+        dst_image: &dyn InternalImage,
+        dst_layout: vk::ImageLayout,
+        regions: &[vk::ImageResolve],
+    ) {
+        unsafe {
+            self.command_pool.vulkan_dep.device().cmd_resolve_image(
+                self.command_buffer,
+                src_image.image(),
+                src_layout,
+                dst_image.image(),
+                dst_layout,
+                regions,
+            );
+        }
+    }
+
     pub fn dynamic_state_viewport(&self, viewport: vk::Viewport) {
         unsafe {
             self.command_pool.vulkan_dep.device().cmd_set_viewport(

@@ -1,4 +1,4 @@
-use crate::{Image, Sampler, UntypedBuffer, Vulkan, VulkanDep};
+use crate::{Image, ImageDep, InternalImage, Sampler, UntypedBuffer, Vulkan, VulkanDep};
 use ash::vk;
 use pyrite_util::Dependable;
 use std::{
@@ -308,7 +308,7 @@ impl<'a> DescriptorSetWriter<'a> {
         self
     }
 
-    pub fn set_storage_image(mut self, binding: u32, image: &Image) -> Self {
+    pub fn set_storage_image(mut self, binding: u32, image: ImageDep) -> Self {
         self.image_infos.push(
             vk::DescriptorImageInfo::builder()
                 .image_view(image.image_view())
@@ -327,7 +327,7 @@ impl<'a> DescriptorSetWriter<'a> {
         );
 
         self.used_objects
-            .push(Arc::downgrade(&image.create_dep()) as Weak<dyn Any + Send + Sync>);
+            .push(Arc::downgrade(&image) as Weak<dyn Any + Send + Sync>);
 
         self
     }
@@ -336,7 +336,7 @@ impl<'a> DescriptorSetWriter<'a> {
         mut self,
         binding: u32,
         image_layout: vk::ImageLayout,
-        image: &Image,
+        image: ImageDep,
         sampler: &Sampler,
     ) -> Self {
         self.image_infos.push(
@@ -358,7 +358,7 @@ impl<'a> DescriptorSetWriter<'a> {
         );
 
         self.used_objects
-            .push(Arc::downgrade(&image.create_dep()) as Weak<dyn Any + Send + Sync>);
+            .push(Arc::downgrade(&image) as Weak<dyn Any + Send + Sync>);
         self.used_objects
             .push(Arc::downgrade(&sampler.create_dep()) as Weak<dyn Any + Send + Sync>);
 

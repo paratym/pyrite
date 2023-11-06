@@ -195,6 +195,10 @@ impl Image {
         Attachment::new(self, attachment_info)
     }
 
+    pub fn as_internal_image(&self) -> &dyn InternalImage {
+        self.internal.deref().deref()
+    }
+
     pub fn create_dep(&self) -> ImageDep {
         self.internal.clone()
     }
