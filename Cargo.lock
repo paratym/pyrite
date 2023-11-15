@@ -1178,6 +1178,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "pyrite_imgui"
+version = "0.1.0"
+dependencies = [
+ "ash",
+ "pyrite_app",
+]
+
+[[package]]
 name = "pyrite_input"
 version = "0.1.0"
 dependencies = [
