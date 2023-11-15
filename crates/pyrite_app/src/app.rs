@@ -4,8 +4,10 @@ use std::{
     collections::HashMap,
 };
 
+use parking_lot::RwLock;
+
 use crate::{
-    resource::{BoxedResource, Res, Resource, ResourceBank},
+    resource::{BoxedResource, Res, ResMut, Resource, ResourceBank},
     scheduler::SystemScheduler,
     stage::{StageBuilder, DEFAULT_STAGE},
     system::SystemFunctionHandler,
@@ -35,20 +37,20 @@ impl AppBuilder {
         self
     }
 
-    pub fn get_resource<R: Resource>(&self) -> Res<R> {
+    pub fn get_resource<R: Resource>(&self) -> Ref<'_, R> {
         Ref::map(
             self.resources.get(&TypeId::of::<R>()).unwrap().borrow(),
-            |r| r.downcast_ref().unwrap(),
+            |resource| resource.downcast_ref().unwrap(),
         )
     }
 
-    pub fn get_resource_mut<R: Resource>(&self) -> RefMut<R>
+    pub fn get_resource_mut<R: Resource>(&self) -> RefMut<'_, R>
     where
         R: Resource,
     {
         RefMut::map(
             self.resources.get(&TypeId::of::<R>()).unwrap().borrow_mut(),
-            |r| r.downcast_mut().unwrap(),
+            |resource| resource.downcast_mut().unwrap(),
         )
     }
 
@@ -69,11 +71,11 @@ impl AppBuilder {
             .expect(&format!("Stage with name '{}' does not exist", name))
     }
 
-    pub fn add_system<M: 'static>(&mut self, system: impl SystemFunctionHandler<M> + 'static) {
+    pub fn add_system<M: 'static + Send + Sync>(&mut self, system: impl SystemFunctionHandler<M>) {
         self.get_stage(DEFAULT_STAGE).add_system(system);
     }
 
-    pub fn add_system_to_stage<M: 'static>(
+    pub fn add_system_to_stage<M: 'static + Send + Sync>(
         &mut self,
         system: impl SystemFunctionHandler<M> + 'static,
         stage: impl ToString,
@@ -90,7 +92,12 @@ impl AppBuilder {
 
     pub fn run(self) {
         let app = Application {
-            resource_bank: ResourceBank::new(self.resources),
+            resource_bank: ResourceBank::new(
+                self.resources
+                    .into_iter()
+                    .map(|(type_id, resource)| (type_id, RwLock::new(resource.into_inner())))
+                    .collect(),
+            ),
             system_scheduler: SystemScheduler::new(
                 self.stages
                     .into_iter()
@@ -113,7 +120,7 @@ impl Application {
         self.resource_bank.get_resource()
     }
 
-    pub fn get_resource_mut<R: Resource>(&self) -> RefMut<R> {
+    pub fn get_resource_mut<R: Resource>(&self) -> ResMut<R> {
         self.resource_bank.get_resource_mut()
     }
 

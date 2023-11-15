@@ -1139,7 +1139,9 @@ name = "pyrite_app"
 version = "0.1.0"
 dependencies = [
  "downcast",
+ "parking_lot",
  "pyrite_app_macros",
+ "rayon",
 ]
 
 [[package]]
@@ -1175,6 +1177,14 @@ dependencies = [
  "pyrite_vulkan",
  "raw-window-handle",
  "winit",
+]
+
+[[package]]
+name = "pyrite_imgui"
+version = "0.1.0"
+dependencies = [
+ "ash",
+ "pyrite_app",
 ]
 
 [[package]]

@@ -1,12 +1,7 @@
 use pyrite_app_macros::generate_system_function_handlers;
 use std::any::TypeId;
 
-use crate::resource::{
-    FromResourceBank,
-    Res,
-    ResMut,
-    ResourceBank,
-};
+use crate::resource::{FromResourceBank, Res, ResMut, ResourceBank};
 
 #[derive(Debug)]
 pub enum ResourceDependency {
@@ -14,22 +9,22 @@ pub enum ResourceDependency {
     ResMut(TypeId),
 }
 
-type SystemParamItem<'rb, P> = <P as SystemParam>::Item<'rb>;
+type SystemParameterTarget<'rb, P> = <P as SystemParameter>::Target<'rb>;
 
-trait SystemParam {
-    type Item<'rb>: SystemParam;
+pub trait SystemParameter {
+    type Target<'rb>: SystemParameter;
 
-    fn from_resource_bank(resource_bank: &ResourceBank) -> Self::Item<'_>;
+    fn from_resource_bank(resource_bank: &ResourceBank) -> Self::Target<'_>;
     fn dependency() -> ResourceDependency;
 }
 
-impl<R> SystemParam for Res<'_, R>
+impl<R> SystemParameter for Res<'_, R>
 where
     R: FromResourceBank + 'static,
 {
-    type Item<'rb> = Res<'rb, R>;
+    type Target<'rb> = Res<'rb, R>;
 
-    fn from_resource_bank(resource_bank: &ResourceBank) -> Self::Item<'_> {
+    fn from_resource_bank(resource_bank: &ResourceBank) -> Self::Target<'_> {
         R::from_resource_bank(resource_bank)
     }
 
@@ -38,13 +33,13 @@ where
     }
 }
 
-impl<R> SystemParam for ResMut<'_, R>
+impl<R> SystemParameter for ResMut<'_, R>
 where
     R: FromResourceBank + 'static,
 {
-    type Item<'rb> = ResMut<'rb, R>;
+    type Target<'rb> = ResMut<'rb, R>;
 
-    fn from_resource_bank(resource_bank: &ResourceBank) -> Self::Item<'_> {
+    fn from_resource_bank(resource_bank: &ResourceBank) -> Self::Target<'_> {
         R::from_resource_bank_mut(resource_bank)
     }
 
@@ -55,13 +50,13 @@ where
 
 pub(crate) type BoxedSystem = Box<dyn System>;
 
-pub(crate) trait System {
+pub(crate) trait System: 'static + Send + Sync {
     fn run(&mut self, resource_bank: &ResourceBank);
     fn name(&self) -> &'static str;
     fn dependencies(&self) -> Vec<ResourceDependency>;
 }
 
-pub trait SystemFunctionHandler<M> {
+pub trait SystemFunctionHandler<M>: 'static + Send + Sync {
     fn handle(&mut self, resource_bank: &ResourceBank);
     fn name() -> &'static str {
         std::any::type_name::<Self>()
@@ -69,12 +64,12 @@ pub trait SystemFunctionHandler<M> {
     fn dependencies() -> Vec<ResourceDependency>;
 }
 
-pub(crate) struct SystemFunction<M, F: SystemFunctionHandler<M>> {
+pub(crate) struct SystemFunction<M: Send + Sync, F: SystemFunctionHandler<M> + Send + Sync> {
     f: F,
     _marker: std::marker::PhantomData<fn(M) -> ()>,
 }
 
-impl<M, F: SystemFunctionHandler<M>> SystemFunction<M, F> {
+impl<M: Send + Sync, F: SystemFunctionHandler<M>> SystemFunction<M, F> {
     fn new(f: F) -> Self {
         Self {
             f,
@@ -87,7 +82,7 @@ impl<M, F: SystemFunctionHandler<M>> SystemFunction<M, F> {
     }
 }
 
-impl<M, F: SystemFunctionHandler<M>> System for SystemFunction<M, F> {
+impl<M: 'static + Send + Sync, F: SystemFunctionHandler<M>> System for SystemFunction<M, F> {
     fn run(&mut self, resource_bank: &ResourceBank) {
         self.f.handle(resource_bank);
     }
@@ -102,9 +97,9 @@ impl<M, F: SystemFunctionHandler<M>> System for SystemFunction<M, F> {
 
 macro_rules! impl_system_function_handler {
     ($($param:ident),*) => {
-        impl<F, $($param: SystemParam),*> SystemFunctionHandler<fn($($param),*) -> ()> for F
+        impl<F, $($param: SystemParameter),*> SystemFunctionHandler<fn($($param),*) -> ()> for F
         where
-            F: FnMut($($param),*) + FnMut($(SystemParamItem<$param>),*),
+            F: FnMut($($param),*) + FnMut($(SystemParameterTarget<$param>),*) + 'static + Send + Sync,
         {
             fn handle(&mut self, _resource_bank: &ResourceBank) {
                 // Function needs to be generified again since rust can't infer the type correctly.

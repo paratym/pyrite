@@ -1,8 +1,4 @@
-use crate::system::{
-    BoxedSystem,
-    SystemFunction,
-    SystemFunctionHandler,
-};
+use crate::system::{BoxedSystem, SystemFunction, SystemFunctionHandler};
 
 pub const DEFAULT_STAGE: &'static str = "default";
 
@@ -17,7 +13,10 @@ impl StageBuilder {
         }
     }
 
-    pub fn add_system<M: 'static>(&mut self, system: impl SystemFunctionHandler<M> + 'static) {
+    pub fn add_system<M: 'static + Send + Sync>(
+        &mut self,
+        system: impl SystemFunctionHandler<M> + 'static,
+    ) {
         self.systems.push(SystemFunction::new_boxed(system));
     }
 
