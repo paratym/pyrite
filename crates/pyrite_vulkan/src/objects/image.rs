@@ -377,7 +377,6 @@ impl InternalImage for OwnedImage {
 
 impl Drop for OwnedImage {
     fn drop(&mut self) {
-        println!("Dropping image");
         unsafe {
             self.vulkan_dep
                 .device()

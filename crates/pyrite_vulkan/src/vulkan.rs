@@ -53,7 +53,6 @@ pub struct Queue {
 
 impl Drop for VulkanInner {
     fn drop(&mut self) {
-        println!("Dropping VulkanInner.");
         unsafe {
             self.device().device_wait_idle().unwrap();
 
@@ -132,7 +131,6 @@ impl VulkanInner {
             {
                 println!("Debug mode enabled. Enabling validation layers.");
                 instance_layers.push(CString::new("VK_LAYER_KHRONOS_validation").unwrap());
-                // instance_layers.push(CString::new("VK_LAYER_LUNARG_api_dump").unwrap());
             }
 
             let c_ptr_instance_layers = instance_layers

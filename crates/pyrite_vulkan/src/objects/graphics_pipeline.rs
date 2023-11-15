@@ -417,8 +417,6 @@ impl RenderPass {
             })
             .collect::<Vec<_>>();
 
-        println!("{:?}", subpass_attachments_references);
-
         let subpass_descriptions = subpass_attachments_references
             .iter()
             .map(

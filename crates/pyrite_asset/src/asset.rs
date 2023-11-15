@@ -185,13 +185,9 @@ impl<T: Send + Sync + 'static> ErasedHandle for Arc<HandleInner<T>> {
         );
         self.is_error.swap(false, atomic::Ordering::Relaxed);
         self.is_loaded.swap(true, atomic::Ordering::Relaxed);
-        println!("Loaded asset for the first time: {:?}", self.file_path);
     }
 
     fn update_error(&self, error: AssetLoadError) {
-        #[cfg(debug_assertions)]
-        println!("Error loading asset for the first time: {:?}", error);
-
         self.error.write().replace(error);
         self.is_error.swap(true, atomic::Ordering::Relaxed);
         self.is_loaded.swap(false, atomic::Ordering::Relaxed);
