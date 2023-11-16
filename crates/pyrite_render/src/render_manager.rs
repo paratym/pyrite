@@ -376,8 +376,6 @@ impl RenderManager {
                 )],
             );
 
-            println!("finished rendering frame {}", render_manager.frame_index);
-
             // Finish recording the command buffer.
             command_buffer.end();
 
