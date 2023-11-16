@@ -274,6 +274,7 @@ impl RenderManager {
         for obj in frame_config.used_objects {
             render_manager.used_objects.push(obj);
         }
+        render_manager.used_objects.push(frame_config.backbuffer_image.clone());
 
         // Process the current frame..
         {
@@ -374,6 +375,8 @@ impl RenderManager {
                     vk::ImageLayout::PRESENT_SRC_KHR,
                 )],
             );
+
+            println!("finished rendering frame {}", render_manager.frame_index);
 
             // Finish recording the command buffer.
             command_buffer.end();

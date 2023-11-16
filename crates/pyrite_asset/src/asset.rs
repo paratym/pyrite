@@ -190,7 +190,7 @@ impl<T: Send + Sync + 'static> ErasedHandle for Arc<HandleInner<T>> {
     fn update_error(&self, error: AssetLoadError) {
         self.error.write().replace(error);
         self.is_error.swap(true, atomic::Ordering::Relaxed);
-        self.is_loaded.swap(false, atomic::Ordering::Relaxed);
+        self.is_loaded.swap(true, atomic::Ordering::Relaxed);
     }
 }
 
@@ -303,11 +303,13 @@ impl<T: Send + Sync + 'static> WatchedHandle<T> {
         let mut watcher = notify::recommended_watcher(
             move |res: Result<notify::Event, notify::Error>| match res {
                 Ok(event) => match event.kind {
-                    notify::EventKind::Modify(notify::event::ModifyKind::Data(_)) => {
+                    notify::EventKind::Modify(_) => {
+                        let regex = regex::Regex::new(r"\\|\\\\").unwrap();
+
                         if event
                             .paths
                             .iter()
-                            .any(|path| path.to_str().unwrap().ends_with(&watcher_file_path))
+                            .any(|path| regex.replace_all(path.to_str().unwrap(), "/").to_string().ends_with(&regex.replace_all(&watcher_file_path, "/").to_string().as_str()))
                         {
                             watcher_should_reload.store(true, atomic::Ordering::Relaxed);
                         }
