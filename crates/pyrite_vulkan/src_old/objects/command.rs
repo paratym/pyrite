@@ -12,7 +12,7 @@ pub struct CommandPool {
 
 impl CommandPool {
     pub fn new(vulkan: &Vulkan) -> Self {
-        let command_pool_create_info = vk::CommandPoolCreateInfo::builder()
+        let command_pool_create_info = vk::CommandPoolCreateInfo::default()
             .queue_family_index(vulkan.default_queue().queue_family_index())
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
 
@@ -33,7 +33,7 @@ impl CommandPool {
     }
 
     pub fn allocate_command_buffers(&self, count: u32) -> Vec<CommandBuffer> {
-        let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
+        let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::default()
             .command_pool(self.internal.command_pool)
             .command_buffer_count(count)
             .level(vk::CommandBufferLevel::PRIMARY);
@@ -95,7 +95,7 @@ impl CommandBuffer {
 
     /// Resets the command buffer and begins the command buffer recording.
     pub fn begin(&self) {
-        let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder();
+        let command_buffer_begin_info = vk::CommandBufferBeginInfo::default();
 
         unsafe {
             self.command_pool
@@ -195,7 +195,7 @@ impl CommandBuffer {
         render_area: vk::Rect2D,
         clear_values: &[vk::ClearValue],
     ) {
-        let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
+        let render_pass_begin_info = vk::RenderPassBeginInfo::default()
             .render_pass(render_pass.render_pass())
             .framebuffer(render_pass.framebuffer())
             .render_area(render_area)
@@ -249,11 +249,10 @@ impl CommandBuffer {
         dst_buffer: &UntypedBuffer,
         dst_offset: u64,
     ) {
-        let regions = [vk::BufferCopy::builder()
+        let regions = [vk::BufferCopy::default()
             .src_offset(src_offset)
             .dst_offset(dst_offset)
-            .size(src_size)
-            .build()];
+            .size(src_size)];
 
         unsafe {
             self.command_pool.vulkan_dep.device().cmd_copy_buffer(
@@ -274,11 +273,10 @@ impl CommandBuffer {
         dst_subresource: vk::ImageSubresourceLayers,
         dst_extent: vk::Extent3D,
     ) {
-        let regions = [vk::BufferImageCopy::builder()
+        let regions = [vk::BufferImageCopy::default()
             .buffer_offset(src_offset)
             .image_subresource(dst_subresource)
-            .image_extent(dst_extent)
-            .build()];
+            .image_extent(dst_extent)];
 
         unsafe {
             self.command_pool

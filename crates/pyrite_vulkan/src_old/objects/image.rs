@@ -242,14 +242,13 @@ pub trait InternalImage: Send + Sync {
             _ => panic!("Unsupported layout transition"),
         };
 
-        vk::ImageMemoryBarrier::builder()
+        vk::ImageMemoryBarrier::default()
             .image(self.image())
             .old_layout(old_layout)
             .new_layout(new_layout)
             .src_access_mask(src_access_mask)
             .dst_access_mask(dst_access_mask)
             .subresource_range(self.default_subresource_range())
-            .build()
     }
 
     fn image_memory_barrier(
@@ -259,22 +258,20 @@ pub trait InternalImage: Send + Sync {
         src_access_mask: vk::AccessFlags,
         dst_access_mask: vk::AccessFlags,
     ) -> vk::ImageMemoryBarrier {
-        vk::ImageMemoryBarrier::builder()
+        vk::ImageMemoryBarrier::default()
             .image(self.image())
             .old_layout(old_layout)
             .new_layout(new_layout)
             .src_access_mask(src_access_mask)
             .dst_access_mask(dst_access_mask)
             .subresource_range(self.default_subresource_range())
-            .build()
     }
 
     fn default_subresource_range(&self) -> vk::ImageSubresourceRange {
-        vk::ImageSubresourceRange::builder()
+        vk::ImageSubresourceRange::default()
             .aspect_mask(vk::ImageAspectFlags::COLOR)
             .layer_count(1)
             .level_count(1)
-            .build()
     }
 
     fn image(&self) -> vk::Image;
@@ -295,7 +292,7 @@ pub struct OwnedImage {
 impl OwnedImage {
     pub fn new(vulkan: &Vulkan, vulkan_allocator: &mut dyn Allocator, info: &ImageInfo) -> Self {
         let queue_family_indices = info.sharing_mode.queue_family_indices_or_default(vulkan);
-        let image_create_info = vk::ImageCreateInfo::builder()
+        let image_create_info = vk::ImageCreateInfo::default()
             .flags(info.flags)
             .image_type(info.image_type)
             .format(info.format)
@@ -333,7 +330,7 @@ impl OwnedImage {
         }
         .expect("Failed to bind image memory");
 
-        let image_view_create_info = vk::ImageViewCreateInfo::builder()
+        let image_view_create_info = vk::ImageViewCreateInfo::default()
             .image(image)
             .view_type(info.image_view_type)
             .format(info.format)

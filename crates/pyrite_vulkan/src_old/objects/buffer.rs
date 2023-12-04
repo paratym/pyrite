@@ -140,7 +140,7 @@ impl UntypedBuffer {
             .sharing_mode
             .queue_family_indices(vulkan)
             .unwrap_or(vec![]);
-        let buffer_create_info = vk::BufferCreateInfo::builder()
+        let buffer_create_info = vk::BufferCreateInfo::default()
             .size(info.size)
             .usage(info.usage)
             .sharing_mode(info.sharing_mode.sharing_mode())

@@ -120,10 +120,9 @@ impl ComputePipelineInner {
             .map(|layout| layout.descriptor_set_layout())
             .collect::<Vec<_>>();
         let push_constant_ranges = info.push_constant_ranges;
-        let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
+        let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::default()
             .set_layouts(&descriptor_set_layouts)
-            .push_constant_ranges(&push_constant_ranges)
-            .build();
+            .push_constant_ranges(&push_constant_ranges);
 
         let pipeline_layout = unsafe {
             vulkan
@@ -132,16 +131,14 @@ impl ComputePipelineInner {
         }
         .expect("Failed to create pipeline layout");
 
-        let info = vk::ComputePipelineCreateInfo::builder()
+        let info = vk::ComputePipelineCreateInfo::default()
             .stage(
-                vk::PipelineShaderStageCreateInfo::builder()
+                vk::PipelineShaderStageCreateInfo::default()
                     .stage(vk::ShaderStageFlags::COMPUTE)
                     .module(info.shader.module())
-                    .name(&shader_main_c_str)
-                    .build(),
+                    .name(&shader_main_c_str),
             )
-            .layout(pipeline_layout)
-            .build();
+            .layout(pipeline_layout);
 
         let compute_pipeline = unsafe {
             vulkan.device().create_compute_pipelines(

@@ -133,7 +133,7 @@ impl SamplerInner {
     pub fn new(vulkan: &Vulkan, info: &SamplerInfo) -> Self {
         let sampler = unsafe {
             vulkan.device().create_sampler(
-                &vk::SamplerCreateInfo::builder()
+                &vk::SamplerCreateInfo::default()
                     .mag_filter(info.mag_filter)
                     .min_filter(info.min_filter)
                     .mipmap_mode(info.mipmap_mode)
@@ -148,8 +148,7 @@ impl SamplerInner {
                     .min_lod(info.min_lod)
                     .max_lod(info.max_lod)
                     .border_color(info.border_color)
-                    .unnormalized_coordinates(info.unnormalized_coordinates)
-                    .build(),
+                    .unnormalized_coordinates(info.unnormalized_coordinates),
                 None,
             )
         }

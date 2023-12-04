@@ -1,0 +1,10 @@
+[package]
+name = "pyrite_window"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pyrite_app = { path = "../pyrite_app" }
+winit = "0.29.4"
+raw-window-handle = "0.6.0"
+

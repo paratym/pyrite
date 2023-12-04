@@ -1,541 +1,673 @@
-use std::{
-    collections::HashMap,
-    ffi::{CStr, CString},
-    sync::Arc,
-};
+use std::{collections::HashMap, ffi::CString, sync::Arc};
 
-use ash::{extensions, vk, Device, Entry, Instance};
-use pyrite_util::dependable;
-use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
-
+use ash::vk;
 use pyrite_app::resource::Resource;
+use raw_window_handle::HasWindowHandle;
 
-pub type QueueName = &'static str;
+// The default queue name.
+pub const DEFAULT_QUEUE: &str = "pyrite_vulkan_default";
 
-pub static DEFAULT_QUEUE: QueueConfig = QueueConfig::new(
-    "pyrite_vulkan::default_queue",
-    1.0,
-    &[
-        QueueType::Graphics,
-        QueueType::Compute,
-        QueueType::Transfer,
-        QueueType::Present,
-    ],
-);
+// The Vulkan application info engine name.
+const ENGINE_NAME: &str = "pyrite";
 
-#[derive(Resource)]
-#[dependable]
-pub struct Vulkan {
-    _entry: Entry,
-    instance: Instance,
-    physical_device: PhysicalDevice,
-    device: Device,
-    surface_loader: extensions::khr::Surface,
-    surface: vk::SurfaceKHR,
-    queues: HashMap<&'static str, Queue>,
-    debug_utils_loader: Option<extensions::ext::DebugUtils>,
-    debug_utils_messenger: Option<vk::DebugUtilsMessengerEXT>,
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum QueueCapability {
+    Graphics,
+    Compute,
+    Transfer,
+    Present,
 }
 
-#[derive(Clone)]
-pub struct PhysicalDevice {
-    physical_device: vk::PhysicalDevice,
+/// How the queue should resolve if it can't be constructed.
+#[derive(Clone, Debug)]
+pub enum QueueResolution {
+    /// Don't care if the queue was not constructed.
+    DontCare,
+
+    /// The fallback queue to use if this queue can't be constructed.
+    Fallback(String),
+
+    // Panic if the queue can't be constructed.
+    Panic,
+}
+
+/// Configuration for a virtual queue.
+///
+/// A virtual queue is managed by the vulkan application and will be constructed
+/// either on its own queue family or shared with other virtual queues.
+#[derive(Debug, Clone)]
+pub struct QueueConfig {
+    /// The unique name of the queue.
+    pub name: String,
+
+    /// The required capabilities of the queue.
+    pub capabilities: Vec<QueueCapability>,
+
+    /// The priority of the queue, ranging from 0.0 to 1.0.
+    /// Queues will be sorted by priority, those with higher priority will be constructed first.
+    pub priority: f32,
+
+    // The queue resolution strategy to use if the queue can't be constructed.
+    pub resolution: QueueResolution,
+}
+
+pub enum SwapchainSupport<'a> {
+    None,
+    Supported(
+        &'a dyn raw_window_handle::HasDisplayHandle,
+        &'a dyn HasWindowHandle,
+    ),
+}
+
+pub struct VulkanConfig<'a> {
+    pub app_name: String,
+    pub queues: Vec<QueueConfig>,
+    pub enable_validation: bool,
+    pub swapchain_support: SwapchainSupport<'a>,
+}
+
+impl Default for VulkanConfig<'_> {
+    fn default() -> Self {
+        Self {
+            app_name: "Pyrite".to_string(),
+            queues: vec![QueueConfig {
+                name: DEFAULT_QUEUE.to_string(),
+                capabilities: vec![
+                    QueueCapability::Graphics,
+                    QueueCapability::Compute,
+                    QueueCapability::Transfer,
+                    QueueCapability::Present,
+                ],
+                priority: 1.0,
+                resolution: QueueResolution::Panic,
+            }],
+            enable_validation: true,
+            swapchain_support: SwapchainSupport::None,
+        }
+    }
+}
+
+pub struct VulkanDebugUtils {
+    debug_utils_loader: ash::extensions::ext::DebugUtils,
+    debug_utils_messenger: vk::DebugUtilsMessengerEXT,
+}
+
+pub struct VulkanSurface {
+    surface_loader: ash::extensions::khr::Surface,
+    surface: ash::vk::SurfaceKHR,
+}
+
+pub struct VulkanPhysicalDevice {
+    physical_device: ash::vk::PhysicalDevice,
     properties: vk::PhysicalDeviceProperties,
     features: vk::PhysicalDeviceFeatures,
     memory_properties: vk::PhysicalDeviceMemoryProperties,
     queue_families: Vec<vk::QueueFamilyProperties>,
 }
 
-pub struct Queue {
+pub struct VulkanQueue {
     queue_family_index: u32,
     queue: vk::Queue,
 }
 
-impl Drop for VulkanInner {
-    fn drop(&mut self) {
-        unsafe {
-            self.device().device_wait_idle().unwrap();
+pub struct VulkanInstance {
+    entry: ash::Entry,
+    instance: ash::Instance,
+    debug_utils: Option<VulkanDebugUtils>,
+    surface: Option<VulkanSurface>,
+    physical_device: VulkanPhysicalDevice,
+    device: ash::Device,
+    queues: HashMap<String, VulkanQueue>,
+    queue_aliases: HashMap<String, String>,
+}
 
-            self.surface_loader().destroy_surface(self.surface, None);
-            self.device().destroy_device(None);
-            #[cfg(debug_assertions)]
-            if let Some(debug_utils_loader) = self.debug_utils_loader.as_ref() {
-                debug_utils_loader
-                    .destroy_debug_utils_messenger(self.debug_utils_messenger.unwrap(), None);
-            }
-            self.instance().destroy_instance(None);
+impl VulkanInstance {
+    pub fn new(config: &VulkanConfig) -> Self {
+        if config.enable_validation {
+            println!("[pyrite_vulkan]: Validation enabled.");
         }
-    }
-}
 
-pub struct VulkanConfig<'a> {
-    pub app_name: String,
-    pub surface_window: Box<&'a dyn SurfaceWindow>,
-    pub queues: Vec<&'static QueueConfig>,
-}
-
-impl Vulkan {
-    pub fn new(config: VulkanConfig) -> Self {
-        Self {
-            inner: Arc::new(VulkanInner::new(config)),
-        }
-    }
-}
-
-impl VulkanInner {
-    pub fn new(config: VulkanConfig) -> Self {
-        let entry = unsafe { Entry::load() }.expect("Vulkan could not be loaded.");
+        let entry = unsafe { ash::Entry::load().expect("Failed to load Vulkan.") };
 
         let instance = {
-            let app_name = CString::new("Pyrite").unwrap();
-            let engine_name = CString::new("Pyrite").unwrap();
+            let app_name = CString::new(config.app_name.clone()).unwrap();
+            let engine_name = CString::new(ENGINE_NAME).unwrap();
 
-            let app_info = vk::ApplicationInfo::builder()
+            let app_info = vk::ApplicationInfo::default()
                 .application_name(&app_name)
                 .application_version(vk::make_api_version(0, 0, 1, 0))
                 .engine_name(&engine_name)
                 .engine_version(vk::make_api_version(0, 0, 1, 0))
                 .api_version(vk::make_api_version(0, 1, 2, 0));
 
-            let instance_extensions = ash_window::enumerate_required_extensions(
-                config.surface_window.raw_display_handle(),
-            )
-            .expect("Could not enumerate required window extensions. Is the display handle valid?")
-            .into_iter()
-            .map(|ext| *ext as *const i8)
-            .collect::<Vec<_>>();
+            let mut instance_extensions = Vec::new();
+            let mut instance_layers = Vec::new();
 
-            #[cfg(debug_assertions)]
-            let instance_extensions = {
-                println!("Debug mode enabled. Enabling debug extensions.");
-                let mut instance_extensions = instance_extensions;
-                instance_extensions.push(ash::extensions::ext::DebugUtils::name().as_ptr());
-                instance_extensions
-            };
-
-            let instance_layer_settings = entry
-                .enumerate_instance_layer_properties()
-                .expect("Could not enumerate instance layer properties.");
-
-            instance_layer_settings.iter().for_each(|layer| {
-                println!(
-                    "Instance layer: {}",
-                    unsafe { CStr::from_ptr(layer.layer_name.as_ptr()) }
-                        .to_str()
-                        .unwrap()
-                );
-            });
-
-            let mut instance_layers: Vec<CString> = Vec::new();
-            #[cfg(debug_assertions)]
-            {
-                println!("Debug mode enabled. Enabling validation layers.");
+            // Add validation layers and debug utils if validation is enabled.
+            if config.enable_validation {
+                instance_extensions.push(ash::extensions::ext::DebugUtils::NAME.to_owned());
                 instance_layers.push(CString::new("VK_LAYER_KHRONOS_validation").unwrap());
             }
 
-            let c_ptr_instance_layers = instance_layers
+            let mut ptr_instance_extensions = instance_extensions
                 .iter()
-                .map(|layer| layer.as_ptr())
+                .map(|s| s.as_ptr())
+                .collect::<Vec<_>>();
+            let ptr_instance_layers = instance_layers
+                .iter()
+                .map(|s| s.as_ptr())
                 .collect::<Vec<_>>();
 
-            let instance_create_info = vk::InstanceCreateInfo::builder()
-                .application_info(&app_info)
-                .enabled_extension_names(&instance_extensions)
-                .enabled_layer_names(&c_ptr_instance_layers);
-
-            unsafe { entry.create_instance(&instance_create_info, None) }
-                .expect("Vulkan instance could not be created.")
-        };
-
-        #[cfg(debug_assertions)]
-        let (debug_utils_loader, debug_utils_messenger) = {
-            let debug_utils_loader = extensions::ext::DebugUtils::new(&entry, &instance);
-            let debug_utils_messenger_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
-                .message_severity(
-                    vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
-                        | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
-                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                        | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+            // Add window extensions if swapchain support is enabled.
+            if let SwapchainSupport::Supported(has_display_handle, _) = config.swapchain_support {
+                let window_extensions = ash_window::enumerate_required_extensions(
+                    has_display_handle.display_handle().unwrap(),
                 )
-                .message_type(
-                    vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-                        | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                        | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
-                )
-                .pfn_user_callback(Some(debug_messenger_callback));
+                .unwrap();
 
-            let debug_utils_messenger = unsafe {
-                debug_utils_loader
-                    .create_debug_utils_messenger(&debug_utils_messenger_create_info, None)
+                ptr_instance_extensions.extend(window_extensions);
             }
-            .expect("Could not create debug utils messenger.");
 
-            (Some(debug_utils_loader), Some(debug_utils_messenger))
+            let instance_create_info = vk::InstanceCreateInfo::default()
+                .application_info(&app_info)
+                .enabled_extension_names(&ptr_instance_extensions)
+                .enabled_layer_names(&ptr_instance_layers);
+
+            unsafe {
+                entry
+                    .create_instance(&instance_create_info, None)
+                    .expect("Failed to create Vulkan instance.")
+            }
         };
-        #[cfg(not(debug_assertions))]
-        let (debug_utils_loader, debug_utils_messenger) = (None, None);
 
-        let surface_loader = extensions::khr::Surface::new(&entry, &instance);
-        let surface = unsafe {
-            ash_window::create_surface(
-                &entry,
-                &instance,
-                config.surface_window.raw_display_handle(),
-                config.surface_window.raw_window_handle(),
-                None,
-            )
-        }
-        .expect("Could not create Vulkan surface.");
+        let debug_utils = match config.enable_validation {
+            true => {
+                let debug_utils_loader = ash::extensions::ext::DebugUtils::new(&entry, &instance);
+                let debug_utils_messenger = {
+                    let debug_utils_messenger_create_info =
+                        vk::DebugUtilsMessengerCreateInfoEXT::default()
+                            .message_severity(
+                                vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                                    | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+                            )
+                            .message_type(
+                                vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                                    | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
+                            )
+                            .pfn_user_callback(Some(Self::debug_messenger_callback));
+
+                    unsafe {
+                        debug_utils_loader
+                            .create_debug_utils_messenger(&debug_utils_messenger_create_info, None)
+                            .expect("Failed to create Vulkan debug utils messenger.")
+                    }
+                };
+
+                Some(VulkanDebugUtils {
+                    debug_utils_loader,
+                    debug_utils_messenger,
+                })
+            }
+            false => None,
+        };
+
+        let surface = match config.swapchain_support {
+            SwapchainSupport::None => None,
+            SwapchainSupport::Supported(has_display_handle, has_window_handle) => {
+                let surface_loader = ash::extensions::khr::Surface::new(&entry, &instance);
+                let surface = unsafe {
+                    ash_window::create_surface(
+                        &entry,
+                        &instance,
+                        has_display_handle.display_handle().unwrap(),
+                        has_window_handle.window_handle().unwrap(),
+                        None,
+                    )
+                    .expect("Failed to create Vulkan surface.")
+                };
+
+                Some(VulkanSurface {
+                    surface_loader,
+                    surface,
+                })
+            }
+        };
 
         let physical_device = {
-            let physical_devices = unsafe { instance.enumerate_physical_devices() }
-                .expect("Could not enumerate physical devices.");
+            let physical_devices = unsafe {
+                instance
+                    .enumerate_physical_devices()
+                    .expect("Failed to enumerate physical devices.")
+            };
 
-            // TODO: Pick physical device based on scoring system.
-            let device = physical_devices[0];
-            let properties = unsafe { instance.get_physical_device_properties(device) };
-            let features = unsafe { instance.get_physical_device_features(device) };
-            let memory_properties =
-                unsafe { instance.get_physical_device_memory_properties(device) };
-            let queue_families =
-                unsafe { instance.get_physical_device_queue_family_properties(device) };
+            let chosen_device = physical_devices.first().unwrap().clone();
 
-            PhysicalDevice {
-                physical_device: device,
-                properties,
-                features,
-                memory_properties,
-                queue_families,
+            VulkanPhysicalDevice {
+                physical_device: chosen_device,
+                properties: unsafe { instance.get_physical_device_properties(chosen_device) },
+                features: unsafe { instance.get_physical_device_features(chosen_device) },
+                memory_properties: unsafe {
+                    instance.get_physical_device_memory_properties(chosen_device)
+                },
+                queue_families: unsafe {
+                    instance.get_physical_device_queue_family_properties(chosen_device)
+                },
             }
         };
 
-        let (device, queues) = Self::create_device(
-            config,
-            &physical_device,
-            &surface_loader,
-            surface,
-            &instance,
-        );
+        let (device, queues, queue_aliases) = {
+            let resolved_queue_definitions =
+                utils::resolve_queue_definitions(&physical_device, &config, &surface);
+            println!(
+                "[pyrite_vulkan]: Resolved queue definitions: {:?}",
+                resolved_queue_definitions
+            );
+
+            // Collect all the queue priorities for each queue family definition.
+            let mut queue_definition_priorities = Vec::new();
+            for (_, queue_configs) in resolved_queue_definitions.queue_family_indices() {
+                let queue_priorities = queue_configs
+                    .iter()
+                    .map(|queue_config| queue_config.priority.clone())
+                    .collect::<Vec<_>>();
+
+                queue_definition_priorities.push(queue_priorities);
+            }
+
+            // Collect all the queue family definitions.
+            let mut queue_definitions = Vec::new();
+            for ((queue_family_index, _), queue_priorities) in resolved_queue_definitions
+                .queue_family_indices()
+                .iter()
+                .zip(queue_definition_priorities.iter())
+            {
+                queue_definitions.push(
+                    vk::DeviceQueueCreateInfo::default()
+                        .queue_family_index(*queue_family_index)
+                        .queue_priorities(queue_priorities),
+                );
+            }
+
+            let device_create_info =
+                vk::DeviceCreateInfo::default().queue_create_infos(&queue_definitions);
+
+            let device = unsafe {
+                instance
+                    .create_device(physical_device.physical_device, &device_create_info, None)
+                    .expect("Failed to create Vulkan device.")
+            };
+
+            let mut queues = HashMap::new();
+            for (queue_family_index, queue_configs) in
+                resolved_queue_definitions.queue_family_indices()
+            {
+                for (local_queue_index, queue_config) in queue_configs.iter().enumerate() {
+                    let queue = unsafe {
+                        device.get_device_queue(*queue_family_index, local_queue_index as u32)
+                    };
+
+                    queues.insert(
+                        queue_config.name.clone(),
+                        VulkanQueue {
+                            queue_family_index: queue_family_index.clone(),
+                            queue,
+                        },
+                    );
+                }
+            }
+            let queue_aliases = resolved_queue_definitions.virtual_queue_aliases().clone();
+
+            (device, queues, queue_aliases)
+        };
 
         Self {
-            _entry: entry,
+            entry,
             instance,
+            debug_utils,
+            surface,
             physical_device,
             device,
-            surface_loader,
-            surface,
             queues,
-            debug_utils_loader,
-            debug_utils_messenger,
+            queue_aliases,
         }
     }
 
-    fn create_device(
-        config: VulkanConfig<'_>,
-        physical_device: &PhysicalDevice,
-        surface_loader: &extensions::khr::Surface,
-        surface: vk::SurfaceKHR,
-        instance: &Instance,
-    ) -> (Device, HashMap<QueueName, Queue>) {
-        // Maps queue family index to a queue.
-        let mut queue_family_indices = HashMap::<u32, Vec<QueueConfig>>::new();
+    unsafe extern "system" fn debug_messenger_callback(
+        message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+        message_type: vk::DebugUtilsMessageTypeFlagsEXT,
+        p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+        _p_user_data: *mut std::ffi::c_void,
+    ) -> vk::Bool32 {
+        let message = std::ffi::CStr::from_ptr((*p_callback_data).p_message);
+        println!(
+            "[pyrite_vulkan]: {:?} {:?} {:?}",
+            message_severity, message_type, message
+        );
 
-        // Find queue families we need and queues we need.
-        config.queues.into_iter().for_each(|queue| {
-            let valid_queue_family_indices =
-                physical_device
-                    .queue_families
-                    .iter()
-                    .enumerate()
-                    .map(|(index, properties)| {
-                        // Check if queue family has all the required types requested.
-                        if !queue.required_types().iter().all(|flag| {
-                            *flag == QueueType::Present
-                                || properties.queue_flags.contains(flag.to_vk())
-                        }) {
-                            return None;
-                        }
-
-                        // Check if queue family supports surface if present is requested.
-                        if queue.required_types().contains(&QueueType::Present) {
-                            let supports_surface = unsafe {
-                                surface_loader
-                                    .get_physical_device_surface_support(
-                                        physical_device.physical_device,
-                                        index as u32,
-                                        surface,
-                                    )
-                                    .expect("Could not get physical device surface support.")
-                            };
-
-                            if !supports_surface {
-                                return None;
-                            }
-                        }
-
-                        // Check if the queue family has enough capacity for the queue.
-                        if queue_family_indices.contains_key(&(index as u32))
-                            && queue_family_indices.get(&(index as u32)).unwrap().len()
-                                >= properties.queue_count as usize
-                        {
-                            return None;
-                        }
-
-                        Some(index as u32)
-                    });
-
-            // Find best valid queue family index.
-            let queue_family_index =
-                valid_queue_family_indices.fold(None, |best, current| match (best, current) {
-                    (None, Some(current)) => Some(current),
-                    (Some(best), Some(current)) => {
-                        // If the best queue family index is not in the map, return it.
-                        if !queue_family_indices.contains_key(&best) {
-                            return Some(best);
-                        }
-
-                        // If the current queue family index is not in the map, return it.
-                        if !queue_family_indices.contains_key(&current) {
-                            return Some(current);
-                        }
-
-                        // If the current queue family index has more queues available than the best queue family index, return it.
-                        if queue_family_indices.get(&current).unwrap().len()
-                            < queue_family_indices.get(&best).unwrap().len()
-                        {
-                            Some(current)
-                        } else {
-                            Some(best)
-                        }
-                    }
-                    (best, _) => best,
-                });
-
-            // Add queue to queue family.
-            if let Some(queue_family_index) = queue_family_index {
-                println!("Queue family index: {}", queue_family_index);
-                if queue_family_indices.contains_key(&queue_family_index) {
-                    queue_family_indices
-                        .get_mut(&queue_family_index)
-                        .unwrap()
-                        .push(queue.clone());
-                } else {
-                    queue_family_indices.insert(queue_family_index, vec![queue.clone()]);
-                }
-            } else {
-                // Queue family isn't found so toss queue out.
-                println!("Queue family not found for queue: {}", queue.queue_name());
-            }
-        });
-
-        let mut queue_priorities = Vec::new();
-
-        let queue_create_infos = queue_family_indices
-            .iter()
-            .map(|(index, queues)| {
-                queue_priorities.push(
-                    queues
-                        .iter()
-                        .map(|queue| queue.priority)
-                        .collect::<Vec<_>>(),
-                );
-                vk::DeviceQueueCreateInfo::builder()
-                    .queue_family_index(*index)
-                    .queue_priorities(queue_priorities.get(queue_priorities.len() - 1).unwrap())
-                    .build()
-            })
-            .collect::<Vec<_>>();
-
-        let device_extensions = [ash::extensions::khr::Swapchain::name().as_ptr()];
-
-        let device_create_info = vk::DeviceCreateInfo::builder()
-            .queue_create_infos(&queue_create_infos)
-            .enabled_extension_names(&device_extensions);
-
-        let device = unsafe {
-            instance.create_device(physical_device.physical_device, &device_create_info, None)
-        }
-        .unwrap();
-
-        let queues = queue_family_indices
-            .iter()
-            .map(|(index, queues)| {
-                queues
-                    .iter()
-                    .enumerate()
-                    .map(|(i, queue)| {
-                        let vk_queue = unsafe { device.get_device_queue(*index, i as u32) };
-                        (
-                            queue.name,
-                            Queue {
-                                queue_family_index: *index,
-                                queue: vk_queue,
-                            },
-                        )
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .flatten()
-            .collect::<HashMap<_, _>>();
-
-        (device, queues)
+        vk::FALSE
     }
+}
 
-    pub fn instance(&self) -> &Instance {
+pub type VulkanDep = Arc<VulkanInstance>;
+
+#[derive(Resource)]
+pub struct Vulkan {
+    instance: Arc<VulkanInstance>,
+}
+
+impl std::ops::Deref for Vulkan {
+    type Target = VulkanInstance;
+
+    fn deref(&self) -> &Self::Target {
         &self.instance
     }
-
-    pub fn surface_loader(&self) -> &extensions::khr::Surface {
-        &self.surface_loader
-    }
-
-    pub fn surface(&self) -> &vk::SurfaceKHR {
-        &self.surface
-    }
-
-    pub fn physical_device(&self) -> &PhysicalDevice {
-        &self.physical_device
-    }
-
-    pub fn device(&self) -> &Device {
-        &self.device
-    }
-
-    pub fn queue(&self, name: QueueName) -> Option<&Queue> {
-        self.queues.get(name)
-    }
-
-    pub fn default_queue(&self) -> &Queue {
-        self.queue(DEFAULT_QUEUE.queue_name()).unwrap()
-    }
 }
 
-unsafe extern "system" fn debug_messenger_callback(
-    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
-    message_type: vk::DebugUtilsMessageTypeFlagsEXT,
-    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
-    _p_user_data: *mut std::ffi::c_void,
-) -> vk::Bool32 {
-    let message = unsafe { CStr::from_ptr((*p_callback_data).p_message) };
-    println!(
-        "[Vulkan] {:?} {:?} {:?}",
-        message_severity, message_type, message
-    );
-    vk::FALSE
-}
-
-impl Queue {
-    pub fn queue_family_index(&self) -> u32 {
-        self.queue_family_index
-    }
-
-    pub fn queue(&self) -> vk::Queue {
-        self.queue
-    }
-}
-
-pub trait SurfaceWindow: HasRawDisplayHandle + HasRawWindowHandle {}
-
-impl<'a> VulkanConfig<'a> {
-    pub fn from_window(app_name: String, window: &'a impl SurfaceWindow) -> Self {
+impl Vulkan {
+    pub fn new(config: &VulkanConfig) -> Self {
         Self {
-            app_name,
-            surface_window: Box::new(window),
-            queues: vec![&DEFAULT_QUEUE],
+            instance: Arc::new(VulkanInstance::new(config)),
         }
     }
 
-    pub fn queue(mut self, queue: &'static QueueConfig) -> Self {
-        self.queues.push(queue);
-        self
+    pub fn create_dep(&self) -> VulkanDep {
+        Arc::clone(&self.instance)
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum QueueType {
-    Graphics = 0b00000001,
-    Compute = 0b00000010,
-    Transfer = 0b00000100,
-    Present = 0b00001000,
-}
+pub(super) mod utils {
+    use std::collections::HashSet;
 
-impl QueueType {
-    pub fn as_u32(&self) -> u32 {
-        *self as u32
+    use super::*;
+
+    #[derive(Debug)]
+    pub(super) struct ResolvedQueueDefinitions {
+        /// Mapping the unique queue family index to it's list of virtual queue configs.
+        queue_family_indices: HashMap<u32, Vec<QueueConfig>>,
+        /// Mapping the virtual queue name to it's fallback queue name.
+        virtual_queue_aliases: HashMap<String, String>,
     }
 
-    pub fn to_vk(&self) -> vk::QueueFlags {
-        match self {
-            Self::Graphics => vk::QueueFlags::GRAPHICS,
-            Self::Compute => vk::QueueFlags::COMPUTE,
-            Self::Transfer => vk::QueueFlags::TRANSFER,
-            Self::Present => vk::QueueFlags::empty(),
+    impl ResolvedQueueDefinitions {
+        pub(super) fn queue_family_indices(&self) -> &HashMap<u32, Vec<QueueConfig>> {
+            &self.queue_family_indices
         }
-    }
-}
 
-#[derive(Clone)]
-pub struct QueueConfig {
-    /// The queue name, used as an identifier for the queue.
-    name: QueueName,
-
-    /// The priority of the queue. This is a value between 0.0 and 1.0.
-    priority: f32,
-
-    /// The command types that the queue needs.
-    ///
-    /// This is used to determine which queue families are suitable for the queue,
-    /// however this functionality is not supported yet and only one queue family is used for now.
-    _required_types: &'static [QueueType],
-}
-
-impl QueueConfig {
-    pub const fn new(name: QueueName, priority: f32, required_types: &'static [QueueType]) -> Self {
-        Self {
-            name,
-            priority,
-            _required_types: required_types,
+        pub(super) fn virtual_queue_aliases(&self) -> &HashMap<String, String> {
+            &self.virtual_queue_aliases
         }
     }
 
-    pub fn queue_name(&self) -> &'static str {
-        self.name
+    pub(super) fn resolve_queue_definitions(
+        physical_device: &VulkanPhysicalDevice,
+        vulkan_config: &VulkanConfig,
+        vulkan_surface: &Option<VulkanSurface>,
+    ) -> ResolvedQueueDefinitions {
+        // Check if the vulkan config queue definitions are valid.
+        {
+            let mut queue_names = HashSet::new();
+            for queue_config in &vulkan_config.queues {
+                // Check if the queue name is unique.
+                if queue_names.contains(&queue_config.name) {
+                    panic!(
+                        "[pyrite_vulkan]: Queue name '{}' is not unique. Queue names must be uniquely named.",
+                        queue_config.name
+                    );
+                }
+
+                // Check for duplicate capabilities.
+                let mut capabilities = HashSet::new();
+                for capability in &queue_config.capabilities {
+                    if capabilities.contains(capability) {
+                        panic!(
+                            "[pyrite_vulkan]: Queue capability '{:?}' is duplicated in queue '{}'. Queue capabilities must be unique.",
+                            capability, queue_config.name
+                        );
+                    }
+
+                    capabilities.insert(capability);
+                }
+
+                // Check if the queue priority is valid.
+                if queue_config.priority < 0.0 || queue_config.priority > 1.0 {
+                    panic!(
+                        "[pyrite_vulkan]: Queue priority value '{}' is invalid. Queue priority must be between 0.0 and 1.0.",
+                        queue_config.priority
+                    );
+                }
+
+                // Check if the queue fallback is valid if specified.
+                if let QueueResolution::Fallback(fallback_queue_name) = &queue_config.resolution {
+                    if !vulkan_config
+                        .queues
+                        .iter()
+                        .any(|queue| &queue.name == fallback_queue_name)
+                    {
+                        panic!(
+                            "[pyrite_vulkan]: Queue fallback '{}' is invalid. If specified, the fallback queue be valid, otherwise set it to None.",
+                            fallback_queue_name
+                        );
+                    }
+
+                    // Ensure the fallback queue doesn't have a circular dependency to this queue.
+                    let mut visited_queue_names = HashSet::new();
+                    let mut current_queue_name = queue_config.name.clone();
+                    while let QueueResolution::Fallback(current_fallback_queue_name) =
+                        &vulkan_config
+                            .queues
+                            .iter()
+                            .find(|queue| queue.name == current_queue_name)
+                            .unwrap()
+                            .resolution
+                    {
+                        // Check for circular dependencies.
+                        if visited_queue_names.contains(current_fallback_queue_name) {
+                            panic!(
+                                "[pyrite_vulkan]: Circular dependency detected in queue fallbacks. Queue '{}' is dependent on itself.",
+                                current_fallback_queue_name
+                            );
+                        }
+
+                        current_queue_name = current_fallback_queue_name.clone();
+                        visited_queue_names.insert(current_fallback_queue_name);
+                    }
+                }
+
+                queue_names.insert(&queue_config.name);
+            }
+        }
+
+        // Resolve the queue definitions
+        // This will map each queue family index to it's list of virtual queue configs.
+        let sorted_queue_configs = {
+            let mut queue_configs = vulkan_config.queues.clone();
+
+            // Sort the queue configs by descending priority.
+            queue_configs.sort_by(|a, b| b.priority.partial_cmp(&a.priority).unwrap());
+            queue_configs
+        };
+
+        let mut queue_family_indices = HashMap::new();
+        let mut virtual_queue_aliases: HashMap<String, String> = HashMap::new();
+
+        let mut queue_family_count: HashMap<u32, u32> = HashMap::new();
+        for queue_config in &sorted_queue_configs {
+            // Search for all the valid queue families that match the queue config.
+            let valid_queue_family_indices = (0..physical_device.queue_families.len() as u32)
+                .filter(|queue_family_index| {
+                    is_queue_family_valid(
+                        physical_device,
+                        *queue_family_index,
+                        queue_config,
+                        vulkan_surface,
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            // We will search within the queues valid queue family indices to find the queue
+            // family with the least amount of queues. If no queue family is found or there were no
+            // valid queue families, then this will return None.
+            let chosen_queue_family_index: Option<u32> = valid_queue_family_indices.iter().fold(
+                None,
+                |min_family_index: Option<u32>, current_family_index| {
+                    // Zero cost abstractions... right?
+                    let min_family_count = min_family_index
+                        .as_ref()
+                        .map(|index| {
+                            queue_family_count
+                                .get(index)
+                                .map(|qf| qf.clone())
+                                .unwrap_or(0)
+                        })
+                        .unwrap_or(0);
+                    let current_family_count = queue_family_count
+                        .get(current_family_index)
+                        .map(|qf| qf.clone())
+                        .unwrap_or(0);
+
+                    // Check if the current queue family has space for another queue.
+                    if current_family_count
+                        < physical_device.queue_families[current_family_index.clone() as usize]
+                            .queue_count
+                        || current_family_count >= min_family_count
+                    {
+                        if min_family_index.is_none() {
+                            // The minimum queue family hasn't been set yet.
+                            return Some(current_family_index.clone());
+                        } else if min_family_count > current_family_count {
+                            // The current queue family has less queues than the minimum queue family.
+                            return Some(current_family_index.clone());
+                        }
+                    }
+
+                    // The current queue family is full or has a higher queue count than the minimum queue family.
+                    min_family_index
+                },
+            );
+
+            // If no queue family was found, then use the queue config's specified resolution strategy.
+            if chosen_queue_family_index.is_none() {
+                match &queue_config.resolution {
+                    QueueResolution::DontCare => {
+                        // Don't care if the queue can't be constructed.
+                        continue;
+                    }
+                    QueueResolution::Fallback(fallback_queue_name) => {
+                        // Use the fallback queue if it can't be constructed.
+                        virtual_queue_aliases
+                            .insert(queue_config.name.clone(), fallback_queue_name.clone());
+                        continue;
+                    }
+                    QueueResolution::Panic => {
+                        // Panic if the queue can't be constructed.
+                        panic!(
+                            "[pyrite_vulkan]: Queue config '{}' is invalid. No queue families found that match the queue config.",
+                            queue_config.name
+                        );
+                    }
+                }
+            }
+
+            let chosen_queue_family_index = chosen_queue_family_index.unwrap();
+
+            // Insert the into chosen queue family index's queue configs.
+            queue_family_indices
+                .entry(chosen_queue_family_index)
+                .or_insert(Vec::new())
+                .push(queue_config.clone());
+
+            // Update the chosen queue family's queue count.
+            queue_family_count.insert(
+                chosen_queue_family_index,
+                queue_family_count
+                    .get(&chosen_queue_family_index)
+                    .unwrap_or(&0)
+                    + 1,
+            );
+        }
+
+        // Validate and flatten virtual queue aliases.
+        let virtual_queue_aliases = {
+            let mut flattened_virtual_queue_aliases = HashMap::new();
+
+            for (alias, definition) in &virtual_queue_aliases {
+                // If the resolved queue name is also an alias, then resolve it to its final constructed
+                // virtual queue name.
+                let mut final_alias = alias.clone();
+                while let Some(current_alias) = virtual_queue_aliases.get(definition) {
+                    final_alias = current_alias.clone();
+                }
+
+                let final_definition = virtual_queue_aliases.get(&final_alias);
+
+                // Validate that the final alias's definition was constructed.
+                if final_definition.is_none() {
+                    panic!(
+                        "[pyrite_vulkan]: Virtual queue alias '{}' is invalid. The resolved virtual queue '{}' was not constructed.",
+                        alias, final_alias
+                    );
+                }
+
+                flattened_virtual_queue_aliases
+                    .insert(final_alias, final_definition.unwrap().clone());
+            }
+
+            flattened_virtual_queue_aliases
+        };
+
+        ResolvedQueueDefinitions {
+            queue_family_indices,
+            virtual_queue_aliases,
+        }
     }
 
-    pub fn priority(&self) -> f32 {
-        self.priority
-    }
+    fn is_queue_family_valid(
+        physical_device: &VulkanPhysicalDevice,
+        queue_family_index: u32,
+        queue_config: &QueueConfig,
+        vulkan_surface: &Option<VulkanSurface>,
+    ) -> bool {
+        let queue_family = physical_device.queue_families[queue_family_index as usize];
 
-    pub fn required_types(&self) -> &'static [QueueType] {
-        self._required_types
-    }
-}
+        // Check if the queue family supports all the capabilities required by the queue config.
+        for capability in &queue_config.capabilities {
+            let capability_supported = match capability {
+                QueueCapability::Graphics => {
+                    queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+                }
+                QueueCapability::Compute => {
+                    queue_family.queue_flags.contains(vk::QueueFlags::COMPUTE)
+                }
+                QueueCapability::Transfer => {
+                    queue_family.queue_flags.contains(vk::QueueFlags::TRANSFER)
+                }
+                QueueCapability::Present => {
+                    if let Some(vulkan_surface) = vulkan_surface {
+                        let surface_loader = &vulkan_surface.surface_loader;
+                        let surface = vulkan_surface.surface;
 
-impl PhysicalDevice {
-    pub fn physical_device(&self) -> vk::PhysicalDevice {
-        self.physical_device
-    }
+                        unsafe {
+                            surface_loader
+                                .get_physical_device_surface_support(
+                                    physical_device.physical_device,
+                                    queue_family_index as u32,
+                                    surface,
+                                )
+                                .unwrap()
+                        }
+                    } else {
+                        false
+                    }
+                }
+            };
 
-    pub fn name(&self) -> String {
-        unsafe { CStr::from_ptr(self.properties.device_name.as_ptr()) }
-            .to_str()
-            .unwrap()
-            .to_owned()
-    }
+            // If the queue family doesn't support one of the capabilities, then it is not valid.
+            if !capability_supported {
+                return false;
+            }
+        }
 
-    pub fn properties(&self) -> &vk::PhysicalDeviceProperties {
-        &self.properties
-    }
-
-    pub fn features(&self) -> &vk::PhysicalDeviceFeatures {
-        &self.features
-    }
-
-    pub fn memory_properties(&self) -> &vk::PhysicalDeviceMemoryProperties {
-        &self.memory_properties
-    }
-
-    pub fn queue_families(&self) -> &[vk::QueueFamilyProperties] {
-        &self.queue_families
+        // All capabilities are supported by the queue family.
+        return true;
     }
 }

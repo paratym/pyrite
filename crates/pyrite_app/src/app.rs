@@ -6,8 +6,8 @@ use std::{
 
 use crate::{
     resource::{BoxedResource, Res, Resource, ResourceBank},
-    scheduler::SystemScheduler,
-    stage::{StageBuilder, DEFAULT_STAGE},
+    scheduler::{LinearSystemScheduler, SystemScheduler},
+    stage::{Stage, StageBuilder, DEFAULT_STAGE},
     system::SystemFunctionHandler,
 };
 
@@ -25,7 +25,7 @@ impl AppBuilder {
             entry_point: None,
         };
 
-        new.create_stage(DEFAULT_STAGE, |_| {});
+        new.create_stage(DEFAULT_STAGE);
         return new;
     }
 
@@ -52,10 +52,9 @@ impl AppBuilder {
         )
     }
 
-    pub fn create_stage(&mut self, name: impl ToString, stage: impl FnOnce(&mut StageBuilder)) {
+    pub fn create_stage(&mut self, name: impl ToString) {
         let name = name.to_string().to_ascii_lowercase();
-        let mut stage_builder = StageBuilder::new();
-        stage(&mut stage_builder);
+        let stage_builder = StageBuilder::new(name.clone());
 
         if self.stages.insert(name.clone(), stage_builder).is_some() {
             panic!("Stage with name '{}' already exists", name);
@@ -91,12 +90,12 @@ impl AppBuilder {
     pub fn run(self) {
         let app = Application {
             resource_bank: ResourceBank::new(self.resources),
-            system_scheduler: SystemScheduler::new(
-                self.stages
-                    .into_iter()
-                    .map(|(name, stage)| (name, stage.build()))
-                    .collect(),
-            ),
+            system_scheduler: Box::new(LinearSystemScheduler::new()),
+            stages: self
+                .stages
+                .into_iter()
+                .map(|(name, stage)| (name, stage.build()))
+                .collect(),
         };
 
         self.entry_point.expect("No entry point was defined")(app);
@@ -105,7 +104,8 @@ impl AppBuilder {
 
 pub struct Application {
     resource_bank: ResourceBank,
-    system_scheduler: SystemScheduler,
+    system_scheduler: Box<dyn SystemScheduler>,
+    stages: HashMap<String, Stage>,
 }
 
 impl Application {
@@ -118,7 +118,13 @@ impl Application {
     }
 
     pub fn execute_stage(&mut self, stage: impl ToString) {
-        self.system_scheduler
-            .execute_stage(stage, &self.resource_bank);
+        let stage_name = stage.to_string().to_ascii_lowercase();
+        self.system_scheduler.execute_stage(
+            self.stages.get_mut(&stage_name).expect(&format!(
+                "Tried to execute a stage that does not exist: {}",
+                stage_name
+            )),
+            &self.resource_bank,
+        );
     }
 }

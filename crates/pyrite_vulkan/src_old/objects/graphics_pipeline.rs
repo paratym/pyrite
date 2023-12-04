@@ -37,68 +37,64 @@ pub struct GraphicsPipelineInner {
     pipeline: vk::Pipeline,
 }
 
-pub struct GraphicsPipelineInfo {
+pub struct GraphicsPipelineInfo<'a> {
     vertex_shader: Shader,
     fragment_shader: Shader,
-    vertex_input_state: vk::PipelineVertexInputStateCreateInfo,
-    input_assembly_state: vk::PipelineInputAssemblyStateCreateInfo,
-    viewport_state: vk::PipelineViewportStateCreateInfo,
-    rasterization_state: vk::PipelineRasterizationStateCreateInfo,
-    multisample_state: vk::PipelineMultisampleStateCreateInfo,
-    depth_stencil_state: vk::PipelineDepthStencilStateCreateInfo,
-    color_blend_state: vk::PipelineColorBlendStateCreateInfo,
-    dynamic_state: vk::PipelineDynamicStateCreateInfo,
+    vertex_input_state: vk::PipelineVertexInputStateCreateInfo<'a>,
+    input_assembly_state: vk::PipelineInputAssemblyStateCreateInfo<'a>,
+    viewport_state: vk::PipelineViewportStateCreateInfo<'a>,
+    rasterization_state: vk::PipelineRasterizationStateCreateInfo<'a>,
+    multisample_state: vk::PipelineMultisampleStateCreateInfo<'a>,
+    depth_stencil_state: vk::PipelineDepthStencilStateCreateInfo<'a>,
+    color_blend_state: vk::PipelineColorBlendStateCreateInfo<'a>,
+    dynamic_state: vk::PipelineDynamicStateCreateInfo<'a>,
     render_pass: RenderPass,
     descriptor_set_layouts: Vec<DescriptorSetLayoutDep>,
     push_constant_ranges: Vec<vk::PushConstantRange>,
 }
 
-impl GraphicsPipelineInfo {
-    pub fn builder() -> GraphicsPipelineInfoBuilder {
+impl<'a> GraphicsPipelineInfo<'a> {
+    pub fn builder() -> GraphicsPipelineInfoBuilder<'a> {
         GraphicsPipelineInfoBuilder::default()
     }
 }
 
-pub struct GraphicsPipelineInfoBuilder {
+pub struct GraphicsPipelineInfoBuilder<'a> {
     vertex_shader: Option<Shader>,
     fragment_shader: Option<Shader>,
-    vertex_input_state: vk::PipelineVertexInputStateCreateInfo,
-    input_assembly_state: vk::PipelineInputAssemblyStateCreateInfo,
-    viewport_state: vk::PipelineViewportStateCreateInfo,
-    rasterization_state: vk::PipelineRasterizationStateCreateInfo,
-    multisample_state: vk::PipelineMultisampleStateCreateInfo,
-    depth_stencil_state: vk::PipelineDepthStencilStateCreateInfo,
-    color_blend_state: vk::PipelineColorBlendStateCreateInfo,
-    dynamic_state: vk::PipelineDynamicStateCreateInfo,
+    vertex_input_state: vk::PipelineVertexInputStateCreateInfo<'a>,
+    input_assembly_state: vk::PipelineInputAssemblyStateCreateInfo<'a>,
+    viewport_state: vk::PipelineViewportStateCreateInfo<'a>,
+    rasterization_state: vk::PipelineRasterizationStateCreateInfo<'a>,
+    multisample_state: vk::PipelineMultisampleStateCreateInfo<'a>,
+    depth_stencil_state: vk::PipelineDepthStencilStateCreateInfo<'a>,
+    color_blend_state: vk::PipelineColorBlendStateCreateInfo<'a>,
+    dynamic_state: vk::PipelineDynamicStateCreateInfo<'a>,
     render_pass: Option<RenderPass>,
     descriptor_set_layouts: Vec<DescriptorSetLayoutDep>,
     push_constant_ranges: Vec<vk::PushConstantRange>,
 }
 
-impl Default for GraphicsPipelineInfoBuilder {
+impl Default for GraphicsPipelineInfoBuilder<'_> {
     fn default() -> Self {
         Self {
             vertex_shader: None,
             fragment_shader: None,
-            vertex_input_state: vk::PipelineVertexInputStateCreateInfo::builder()
+            vertex_input_state: vk::PipelineVertexInputStateCreateInfo::default()
                 .vertex_attribute_descriptions(&[])
-                .vertex_binding_descriptions(&[])
-                .build(),
-            input_assembly_state: vk::PipelineInputAssemblyStateCreateInfo::builder()
-                .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
-                .build(),
+                .vertex_binding_descriptions(&[]),
+            input_assembly_state: vk::PipelineInputAssemblyStateCreateInfo::default()
+                .topology(vk::PrimitiveTopology::TRIANGLE_LIST),
             viewport_state: vk::PipelineViewportStateCreateInfo::default(),
-            rasterization_state: vk::PipelineRasterizationStateCreateInfo::builder()
+            rasterization_state: vk::PipelineRasterizationStateCreateInfo::default()
                 .cull_mode(vk::CullModeFlags::NONE)
                 .line_width(1.0)
                 .polygon_mode(vk::PolygonMode::FILL)
                 .depth_clamp_enable(false)
                 .rasterizer_discard_enable(false)
-                .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
-                .build(),
-            multisample_state: vk::PipelineMultisampleStateCreateInfo::builder()
-                .rasterization_samples(vk::SampleCountFlags::TYPE_1)
-                .build(),
+                .front_face(vk::FrontFace::COUNTER_CLOCKWISE),
+            multisample_state: vk::PipelineMultisampleStateCreateInfo::default()
+                .rasterization_samples(vk::SampleCountFlags::TYPE_1),
             depth_stencil_state: vk::PipelineDepthStencilStateCreateInfo::default(),
             color_blend_state: vk::PipelineColorBlendStateCreateInfo::default(),
             dynamic_state: vk::PipelineDynamicStateCreateInfo::default(),
@@ -109,7 +105,7 @@ impl Default for GraphicsPipelineInfoBuilder {
     }
 }
 
-impl GraphicsPipelineInfoBuilder {
+impl<'a> GraphicsPipelineInfoBuilder<'a> {
     pub fn vertex_shader(mut self, vertex_shader: Shader) -> Self {
         self.vertex_shader = Some(vertex_shader);
         self
@@ -122,7 +118,7 @@ impl GraphicsPipelineInfoBuilder {
 
     pub fn vertex_input_state(
         mut self,
-        vertex_input_state: vk::PipelineVertexInputStateCreateInfo,
+        vertex_input_state: vk::PipelineVertexInputStateCreateInfo<'a>,
     ) -> Self {
         self.vertex_input_state = vertex_input_state;
         self
@@ -130,20 +126,23 @@ impl GraphicsPipelineInfoBuilder {
 
     pub fn input_assembly_state(
         mut self,
-        input_assembly_state: vk::PipelineInputAssemblyStateCreateInfo,
+        input_assembly_state: vk::PipelineInputAssemblyStateCreateInfo<'a>,
     ) -> Self {
         self.input_assembly_state = input_assembly_state;
         self
     }
 
-    pub fn viewport_state(mut self, viewport_state: vk::PipelineViewportStateCreateInfo) -> Self {
+    pub fn viewport_state(
+        mut self,
+        viewport_state: vk::PipelineViewportStateCreateInfo<'a>,
+    ) -> Self {
         self.viewport_state = viewport_state;
         self
     }
 
     pub fn rasterization_state(
         mut self,
-        rasterization_state: vk::PipelineRasterizationStateCreateInfo,
+        rasterization_state: vk::PipelineRasterizationStateCreateInfo<'a>,
     ) -> Self {
         self.rasterization_state = rasterization_state;
         self
@@ -151,7 +150,7 @@ impl GraphicsPipelineInfoBuilder {
 
     pub fn multisample_state(
         mut self,
-        multisample_state: vk::PipelineMultisampleStateCreateInfo,
+        multisample_state: vk::PipelineMultisampleStateCreateInfo<'a>,
     ) -> Self {
         self.multisample_state = multisample_state;
         self
@@ -159,7 +158,7 @@ impl GraphicsPipelineInfoBuilder {
 
     pub fn depth_stencil_state(
         mut self,
-        depth_stencil_state: vk::PipelineDepthStencilStateCreateInfo,
+        depth_stencil_state: vk::PipelineDepthStencilStateCreateInfo<'a>,
     ) -> Self {
         self.depth_stencil_state = depth_stencil_state;
         self
@@ -167,13 +166,13 @@ impl GraphicsPipelineInfoBuilder {
 
     pub fn color_blend_state(
         mut self,
-        color_blend_state: vk::PipelineColorBlendStateCreateInfo,
+        color_blend_state: vk::PipelineColorBlendStateCreateInfo<'a>,
     ) -> Self {
         self.color_blend_state = color_blend_state;
         self
     }
 
-    pub fn dynamic_state(mut self, dynamic_state: vk::PipelineDynamicStateCreateInfo) -> Self {
+    pub fn dynamic_state(mut self, dynamic_state: vk::PipelineDynamicStateCreateInfo<'a>) -> Self {
         self.dynamic_state = dynamic_state;
         self
     }
@@ -208,7 +207,7 @@ impl GraphicsPipelineInfoBuilder {
         self
     }
 
-    pub fn build(self) -> GraphicsPipelineInfo {
+    pub fn build(self) -> GraphicsPipelineInfo<'a> {
         GraphicsPipelineInfo {
             vertex_shader: self.vertex_shader.unwrap(),
             fragment_shader: self.fragment_shader.unwrap(),
@@ -244,16 +243,14 @@ impl GraphicsPipelineInner {
     pub fn new(vulkan: &Vulkan, info: GraphicsPipelineInfo) -> Self {
         let shader_main_c_str = std::ffi::CString::new("main").unwrap();
         let shader_stages = [
-            vk::PipelineShaderStageCreateInfo::builder()
+            vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlags::VERTEX)
                 .module(info.vertex_shader.module())
-                .name(shader_main_c_str.as_c_str())
-                .build(),
-            vk::PipelineShaderStageCreateInfo::builder()
+                .name(shader_main_c_str.as_c_str()),
+            vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlags::FRAGMENT)
                 .module(info.fragment_shader.module())
-                .name(shader_main_c_str.as_c_str())
-                .build(),
+                .name(shader_main_c_str.as_c_str()),
         ];
 
         let vertex_input_state = info.vertex_input_state;
@@ -272,10 +269,9 @@ impl GraphicsPipelineInner {
             .map(|layout| layout.descriptor_set_layout())
             .collect::<Vec<_>>();
         let push_constant_ranges = info.push_constant_ranges;
-        let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
+        let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::default()
             .set_layouts(&descriptor_set_layouts)
-            .push_constant_ranges(&push_constant_ranges)
-            .build();
+            .push_constant_ranges(&push_constant_ranges);
 
         // Safety: The pipeline layout is dropped when the internal pipeline is dropped
         let pipeline_layout = unsafe {
@@ -285,7 +281,7 @@ impl GraphicsPipelineInner {
                 .unwrap()
         };
 
-        let graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo::builder()
+        let graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo::default()
             .stages(&shader_stages)
             .vertex_input_state(&vertex_input_state)
             .input_assembly_state(&input_assembly_state)
@@ -305,7 +301,7 @@ impl GraphicsPipelineInner {
                 .device()
                 .create_graphics_pipelines(
                     vk::PipelineCache::null(),
-                    &[graphics_pipeline_create_info.build()],
+                    &[graphics_pipeline_create_info],
                     None,
                 )
                 .unwrap()[0]
@@ -377,26 +373,24 @@ impl RenderPass {
                     .color_attachments
                     .iter()
                     .map(|attachment_reference| {
-                        vk::AttachmentReference::builder()
+                        vk::AttachmentReference::default()
                             .attachment(
                                 attachment_indices
                                     [&attachment_reference.attachment.image_dep.image()],
                             )
                             .layout(attachment_reference.layout)
-                            .build()
                     })
                     .collect::<Vec<_>>();
                 let resolve_attachments = subpass
                     .resolve_attachments
                     .iter()
                     .map(|attachment_reference| {
-                        vk::AttachmentReference::builder()
+                        vk::AttachmentReference::default()
                             .attachment(
                                 attachment_indices
                                     [&attachment_reference.attachment.image_dep.image()],
                             )
                             .layout(attachment_reference.layout)
-                            .build()
                     })
                     .collect::<Vec<_>>();
                 let depth_attachment =
@@ -404,13 +398,12 @@ impl RenderPass {
                         .depth_attachment
                         .as_ref()
                         .map(|attachment_reference| {
-                            vk::AttachmentReference::builder()
+                            vk::AttachmentReference::default()
                                 .attachment(
                                     attachment_indices
                                         [&attachment_reference.attachment.image_dep.image()],
                                 )
                                 .layout(attachment_reference.layout)
-                                .build()
                         });
 
                 (color_attachments, resolve_attachments, depth_attachment)
@@ -421,16 +414,17 @@ impl RenderPass {
             .iter()
             .map(
                 |(color_attachments, resolve_attachments, depth_attachment)| {
-                    let mut builder = vk::SubpassDescription::builder()
+                    let mut subpass_description = vk::SubpassDescription::default()
                         .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
                         .color_attachments(color_attachments)
                         .resolve_attachments(resolve_attachments);
 
                     if let Some(depth_attachment) = depth_attachment {
-                        builder = builder.depth_stencil_attachment(depth_attachment)
+                        subpass_description =
+                            subpass_description.depth_stencil_attachment(depth_attachment)
                     }
 
-                    builder.build()
+                    subpass_description
                 },
             )
             .collect::<Vec<_>>();
@@ -440,7 +434,7 @@ impl RenderPass {
             .map(|(_, (index, attachment))| {
                 (
                     index,
-                    vk::AttachmentDescription::builder()
+                    vk::AttachmentDescription::default()
                         .format(attachment.image_dep.image_format())
                         .samples(attachment.info.samples)
                         .load_op(attachment.info.load_op)
@@ -448,8 +442,7 @@ impl RenderPass {
                         .stencil_load_op(attachment.info.load_op)
                         .stencil_store_op(attachment.info.store_op)
                         .initial_layout(attachment.info.initial_layout)
-                        .final_layout(attachment.info.final_layout)
-                        .build(),
+                        .final_layout(attachment.info.final_layout),
                 )
             })
             .collect::<Vec<_>>();
@@ -461,7 +454,7 @@ impl RenderPass {
             .collect::<Vec<_>>();
 
         let subpass_dependencies = [
-            vk::SubpassDependency::builder()
+            vk::SubpassDependency::default()
                 .src_subpass(vk::SUBPASS_EXTERNAL)
                 .dst_subpass(0)
                 .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
@@ -470,9 +463,8 @@ impl RenderPass {
                 .dst_access_mask(
                     vk::AccessFlags::COLOR_ATTACHMENT_READ
                         | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                )
-                .build(),
-            vk::SubpassDependency::builder()
+                ),
+            vk::SubpassDependency::default()
                 .src_subpass(vk::SUBPASS_EXTERNAL)
                 .dst_subpass(0)
                 .src_stage_mask(vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS)
@@ -481,11 +473,10 @@ impl RenderPass {
                 .dst_access_mask(
                     vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
                         | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-                )
-                .build(),
+                ),
         ];
 
-        let render_pass_create_info = vk::RenderPassCreateInfo::builder()
+        let render_pass_create_info = vk::RenderPassCreateInfo::default()
             .attachments(&attachment_descriptions)
             .subpasses(&subpass_descriptions)
             .dependencies(&subpass_dependencies);
@@ -525,7 +516,7 @@ impl RenderPass {
                 },
             );
 
-        let framebuffer_create_info = vk::FramebufferCreateInfo::builder()
+        let framebuffer_create_info = vk::FramebufferCreateInfo::default()
             .render_pass(render_pass)
             .attachments(&attachment_image_views)
             .width(width)

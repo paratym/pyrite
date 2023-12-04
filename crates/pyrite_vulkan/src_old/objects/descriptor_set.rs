@@ -42,7 +42,7 @@ impl DescriptorSetPool {
             .map(|_| descriptor_set_layout.descriptor_set_layout)
             .collect::<Vec<_>>();
 
-        let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
+        let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::default()
             .descriptor_pool(self.internal.descriptor_pool)
             .set_layouts(&descriptor_set_layouts);
 
@@ -76,17 +76,15 @@ impl Drop for InternalDescriptorSetPool {
 impl InternalDescriptorSetPool {
     pub fn new(vulkan: &Vulkan) -> Self {
         let descriptor_pool_sizes = [
-            vk::DescriptorPoolSize::builder()
+            vk::DescriptorPoolSize::default()
                 .ty(vk::DescriptorType::UNIFORM_BUFFER)
-                .descriptor_count(100)
-                .build(),
-            vk::DescriptorPoolSize::builder()
+                .descriptor_count(100),
+            vk::DescriptorPoolSize::default()
                 .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .descriptor_count(100)
-                .build(),
+                .descriptor_count(100),
         ];
 
-        let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::builder()
+        let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::default()
             .pool_sizes(&descriptor_pool_sizes)
             .max_sets(25)
             .flags(vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET);
@@ -141,9 +139,8 @@ pub struct InternalDescriptorSetLayout {
 
 impl InternalDescriptorSetLayout {
     pub fn new(vulkan: &Vulkan, bindings: &[vk::DescriptorSetLayoutBinding]) -> Self {
-        let descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo::builder()
-            .bindings(bindings)
-            .build();
+        let descriptor_set_layout_create_info =
+            vk::DescriptorSetLayoutCreateInfo::default().bindings(bindings);
 
         // Safety: The descriptor set layout is dropped when the internal descriptor set layout is
         // dropped
@@ -268,7 +265,7 @@ impl DescriptorSetInner {
 
 pub struct DescriptorSetWriter<'a> {
     descriptor_set: &'a DescriptorSetInner,
-    descriptor_writes: Vec<vk::WriteDescriptorSet>,
+    descriptor_writes: Vec<vk::WriteDescriptorSet<'a>>,
     buffer_infos: Vec<vk::DescriptorBufferInfo>,
     image_infos: Vec<vk::DescriptorImageInfo>,
     used_objects: Vec<Weak<dyn Any + Send + Sync>>,
@@ -285,45 +282,43 @@ impl<'a> DescriptorSetWriter<'a> {
         }
     }
 
-    pub fn set_uniform_buffer(mut self, binding: u32, buffer: &Arc<UntypedBuffer>) -> Self {
-        // Used to keep buffer info pointer alive until write call.
-        self.buffer_infos.push(
-            vk::DescriptorBufferInfo::builder()
-                .buffer(buffer.buffer())
-                .range(vk::WHOLE_SIZE)
-                .build(),
-        );
-        let buffer_info = self.buffer_infos.get(self.buffer_infos.len() - 1).unwrap();
+    pub fn set_uniform_buffer(mut self, binding: u32, buffer: Arc<UntypedBuffer>) -> Self {
+        {
+            // Used to keep buffer info pointer alive until write call.
+            self.buffer_infos.push(
+                vk::DescriptorBufferInfo::default()
+                    .buffer(buffer.buffer())
+                    .range(vk::WHOLE_SIZE),
+            );
+            let buffer_info = self.buffer_infos.get(self.buffer_infos.len() - 1).unwrap();
 
-        self.descriptor_writes.push(
-            vk::WriteDescriptorSet::builder()
-                .dst_set(self.descriptor_set.descriptor_set())
-                .dst_binding(binding)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .buffer_info(std::slice::from_ref(buffer_info))
-                .build(),
-        );
-        self.used_objects
-            .push(Arc::downgrade(buffer) as Weak<dyn Any + Send + Sync>);
+            self.descriptor_writes.push(
+                vk::WriteDescriptorSet::default()
+                    .dst_set(self.descriptor_set.descriptor_set())
+                    .dst_binding(binding)
+                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                    .buffer_info(std::slice::from_ref(buffer_info)),
+            );
+            self.used_objects
+                .push(Arc::downgrade(&buffer) as Weak<dyn Any + Send + Sync>);
+        }
         self
     }
 
     pub fn set_storage_image(mut self, binding: u32, image: ImageDep) -> Self {
         self.image_infos.push(
-            vk::DescriptorImageInfo::builder()
+            vk::DescriptorImageInfo::default()
                 .image_view(image.image_view())
-                .image_layout(vk::ImageLayout::GENERAL)
-                .build(),
+                .image_layout(vk::ImageLayout::GENERAL),
         );
         let image_info = self.image_infos.get(self.image_infos.len() - 1).unwrap();
 
         self.descriptor_writes.push(
-            vk::WriteDescriptorSet::builder()
+            vk::WriteDescriptorSet::default()
                 .dst_set(self.descriptor_set.descriptor_set())
                 .dst_binding(binding)
                 .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-                .image_info(std::slice::from_ref(image_info))
-                .build(),
+                .image_info(std::slice::from_ref(image_info)),
         );
 
         self.used_objects
@@ -340,21 +335,19 @@ impl<'a> DescriptorSetWriter<'a> {
         sampler: &Sampler,
     ) -> Self {
         self.image_infos.push(
-            vk::DescriptorImageInfo::builder()
+            vk::DescriptorImageInfo::default()
                 .image_view(image.image_view())
                 .image_layout(image_layout)
-                .sampler(sampler.sampler())
-                .build(),
+                .sampler(sampler.sampler()),
         );
         let image_info = self.image_infos.get(self.image_infos.len() - 1).unwrap();
 
         self.descriptor_writes.push(
-            vk::WriteDescriptorSet::builder()
+            vk::WriteDescriptorSet::default()
                 .dst_set(self.descriptor_set.descriptor_set())
                 .dst_binding(binding)
                 .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .image_info(std::slice::from_ref(image_info))
-                .build(),
+                .image_info(std::slice::from_ref(image_info)),
         );
 
         self.used_objects

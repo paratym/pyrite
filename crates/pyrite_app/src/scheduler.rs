@@ -1,22 +1,24 @@
-use crate::{
-    resource::ResourceBank,
-    system::BoxedSystem,
-};
-use std::collections::HashMap;
+use crate::{resource::ResourceBank, stage::Stage};
 
-pub struct SystemScheduler {
-    stages: HashMap<String, Vec<BoxedSystem>>,
+pub trait SystemScheduler {
+    fn execute_stage(&mut self, stage: &mut Stage, resource_bank: &ResourceBank);
 }
 
-impl SystemScheduler {
-    pub(crate) fn new(stages: HashMap<String, Vec<BoxedSystem>>) -> Self {
-        Self { stages }
-    }
+/// A linear system scheduler executes systems in the order they are added to the stage.
+/// This schedular runs the systems in a single thread.
+pub struct LinearSystemScheduler {}
 
-    // TODO: Make multithreaded in the future
-    pub(crate) fn execute_stage(&mut self, stage: impl ToString, resource_bank: &ResourceBank) {
-        let stage_name = stage.to_string().to_ascii_lowercase();
-        for system in self.stages.get_mut(&stage_name).unwrap() {
+impl LinearSystemScheduler {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl SystemScheduler for LinearSystemScheduler {
+    fn execute_stage(&mut self, stage: &mut Stage, resource_bank: &ResourceBank) {
+        // println!("[pyrite_app]: Executing stage - {}", stage.name());
+        for system in stage.systems_mut() {
+            // println!("[pyrite_app]: Executing system - {}", system.name());
             system.run(resource_bank);
         }
     }

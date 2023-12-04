@@ -9,7 +9,7 @@ pub struct Semaphore {
 
 impl Semaphore {
     pub fn new(vulkan: &Vulkan) -> Self {
-        let semaphore_create_info = vk::SemaphoreCreateInfo::builder();
+        let semaphore_create_info = vk::SemaphoreCreateInfo::default();
 
         // Safety: The semaphore is only used in this struct and is destroyed when this struct is
         // dropped
@@ -48,7 +48,7 @@ pub struct Fence {
 
 impl Fence {
     pub fn new(vulkan: &Vulkan, is_signaled: bool) -> Self {
-        let fence_create_info = vk::FenceCreateInfo::builder().flags(if is_signaled {
+        let fence_create_info = vk::FenceCreateInfo::default().flags(if is_signaled {
             vk::FenceCreateFlags::SIGNALED
         } else {
             vk::FenceCreateFlags::empty()

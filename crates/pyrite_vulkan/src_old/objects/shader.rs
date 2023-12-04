@@ -20,10 +20,9 @@ impl Drop for Shader {
 impl Shader {
     pub fn new(vulkan: &Vulkan, code: &[u32]) -> Self {
         let module = unsafe {
-            vulkan.device().create_shader_module(
-                &vk::ShaderModuleCreateInfo::builder().code(code).build(),
-                None,
-            )
+            vulkan
+                .device()
+                .create_shader_module(&vk::ShaderModuleCreateInfo::default().code(code), None)
         }
         .expect("Failed to create shader module");
 
