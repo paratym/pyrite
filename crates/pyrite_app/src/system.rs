@@ -1,12 +1,7 @@
 use pyrite_app_macros::generate_system_function_handlers;
 use std::any::TypeId;
 
-use crate::resource::{
-    FromResourceBank,
-    Res,
-    ResMut,
-    ResourceBank,
-};
+use crate::resource::{FromResourceBank, Res, ResMut, ResourceBank};
 
 #[derive(Debug)]
 pub enum ResourceDependency {
@@ -20,9 +15,14 @@ trait SystemParam {
     type Item<'rb>: SystemParam;
 
     fn from_resource_bank(resource_bank: &ResourceBank) -> Self::Item<'_>;
+
+    /// Used to validate that the system isn't using the same resource twice.
     fn dependency() -> ResourceDependency;
+
+    // TODO: fn scheduling_dependencies() -> Vec<ScheduingDependencyType>;
 }
 
+// Generic system param over any generic resource from the resource bank.
 impl<R> SystemParam for Res<'_, R>
 where
     R: FromResourceBank + 'static,
@@ -114,6 +114,7 @@ macro_rules! impl_system_function_handler {
                 {
                     (f)($($param),*);
                 }
+
                 call(self, $($param::from_resource_bank(_resource_bank)),*);
             }
 

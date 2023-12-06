@@ -18,7 +18,18 @@ pub enum QueueCapability {
     Present,
 }
 
-/// How the queue should resolve if it can't be constructed.
+#[derive(Clone, Debug)]
+pub enum QueuePriority {
+    /// This queue must be constructed on its own queue family.
+    /// If a exclusive queue family cannot be found, then the queue will not be constructed.
+    Exclusive,
+
+    /// This queue can be shared with other queues in the same queue family.
+    /// The f32 value is the priority of the queue when executing in the queue family,
+    /// ranging from 0.0 to 1.0.
+    Shared(f32),
+}
+
 #[derive(Clone, Debug)]
 pub enum QueueResolution {
     /// Don't care if the queue was not constructed.
@@ -43,9 +54,8 @@ pub struct QueueConfig {
     /// The required capabilities of the queue.
     pub capabilities: Vec<QueueCapability>,
 
-    /// The priority of the queue, ranging from 0.0 to 1.0.
-    /// Queues will be sorted by priority, those with higher priority will be constructed first.
-    pub priority: f32,
+    /// The priority of the queue when executing in the queue family.
+    pub priority: QueuePriority,
 
     // The queue resolution strategy to use if the queue can't be constructed.
     pub resolution: QueueResolution,
@@ -78,7 +88,7 @@ impl Default for VulkanConfig<'_> {
                     QueueCapability::Transfer,
                     QueueCapability::Present,
                 ],
-                priority: 1.0,
+                priority: QueuePriority::Exclusive,
                 resolution: QueueResolution::Panic,
             }],
             enable_validation: true,
@@ -92,9 +102,29 @@ pub struct VulkanDebugUtils {
     debug_utils_messenger: vk::DebugUtilsMessengerEXT,
 }
 
+impl VulkanDebugUtils {
+    pub fn loader(&self) -> &ash::extensions::ext::DebugUtils {
+        &self.debug_utils_loader
+    }
+
+    pub fn messenger(&self) -> vk::DebugUtilsMessengerEXT {
+        self.debug_utils_messenger
+    }
+}
+
 pub struct VulkanSurface {
     surface_loader: ash::extensions::khr::Surface,
     surface: ash::vk::SurfaceKHR,
+}
+
+impl VulkanSurface {
+    pub fn loader(&self) -> &ash::extensions::khr::Surface {
+        &self.surface_loader
+    }
+
+    pub fn surface(&self) -> vk::SurfaceKHR {
+        self.surface
+    }
 }
 
 pub struct VulkanPhysicalDevice {
@@ -105,9 +135,41 @@ pub struct VulkanPhysicalDevice {
     queue_families: Vec<vk::QueueFamilyProperties>,
 }
 
+impl VulkanPhysicalDevice {
+    pub fn physical_device(&self) -> vk::PhysicalDevice {
+        self.physical_device
+    }
+
+    pub fn properties(&self) -> &vk::PhysicalDeviceProperties {
+        &self.properties
+    }
+
+    pub fn features(&self) -> &vk::PhysicalDeviceFeatures {
+        &self.features
+    }
+
+    pub fn memory_properties(&self) -> &vk::PhysicalDeviceMemoryProperties {
+        &self.memory_properties
+    }
+
+    pub fn queue_families(&self) -> &Vec<vk::QueueFamilyProperties> {
+        &self.queue_families
+    }
+}
+
 pub struct VulkanQueue {
     queue_family_index: u32,
     queue: vk::Queue,
+}
+
+impl VulkanQueue {
+    pub fn queue_family_index(&self) -> u32 {
+        self.queue_family_index
+    }
+
+    pub fn queue(&self) -> vk::Queue {
+        self.queue
+    }
 }
 
 pub struct VulkanInstance {
@@ -263,18 +325,19 @@ impl VulkanInstance {
                 resolved_queue_definitions
             );
 
-            // Collect all the queue priorities for each queue family definition.
             let mut queue_definition_priorities = Vec::new();
             for (_, queue_configs) in resolved_queue_definitions.queue_family_indices() {
                 let queue_priorities = queue_configs
                     .iter()
-                    .map(|queue_config| queue_config.priority.clone())
+                    .map(|queue_config| match queue_config.priority {
+                        QueuePriority::Exclusive => 1.0,
+                        QueuePriority::Shared(priority) => priority,
+                    })
                     .collect::<Vec<_>>();
 
                 queue_definition_priorities.push(queue_priorities);
             }
 
-            // Collect all the queue family definitions.
             let mut queue_definitions = Vec::new();
             for ((queue_family_index, _), queue_priorities) in resolved_queue_definitions
                 .queue_family_indices()
@@ -288,8 +351,18 @@ impl VulkanInstance {
                 );
             }
 
-            let device_create_info =
-                vk::DeviceCreateInfo::default().queue_create_infos(&queue_definitions);
+            let mut device_extensions = Vec::new();
+            if let SwapchainSupport::Supported(_, _) = config.swapchain_support {
+                device_extensions.push(ash::extensions::khr::Swapchain::NAME.to_owned());
+            }
+            let ptr_device_extensions = device_extensions
+                .iter()
+                .map(|s| s.as_ptr())
+                .collect::<Vec<_>>();
+
+            let device_create_info = vk::DeviceCreateInfo::default()
+                .enabled_extension_names(&ptr_device_extensions)
+                .queue_create_infos(&queue_definitions);
 
             let device = unsafe {
                 instance
@@ -330,6 +403,44 @@ impl VulkanInstance {
             queues,
             queue_aliases,
         }
+    }
+
+    pub fn entry(&self) -> &ash::Entry {
+        &self.entry
+    }
+
+    pub fn instance(&self) -> &ash::Instance {
+        &self.instance
+    }
+
+    pub fn debug_utils(&self) -> &Option<VulkanDebugUtils> {
+        &self.debug_utils
+    }
+
+    pub fn surface(&self) -> &Option<VulkanSurface> {
+        &self.surface
+    }
+
+    pub fn physical_device(&self) -> &VulkanPhysicalDevice {
+        &self.physical_device
+    }
+
+    pub fn device(&self) -> &ash::Device {
+        &self.device
+    }
+
+    pub fn queue(&self, queue_name: &str) -> Option<&VulkanQueue> {
+        let queue_name = self
+            .queue_aliases
+            .get(queue_name)
+            .map_or(queue_name.to_owned(), |queue_name| queue_name.to_owned());
+
+        self.queues.get(&queue_name)
+    }
+
+    pub fn default_queue(&self) -> &VulkanQueue {
+        self.queue(DEFAULT_QUEUE)
+            .expect("[pyrite_vulkan]: Default queue was not found.")
     }
 
     unsafe extern "system" fn debug_messenger_callback(
@@ -428,12 +539,14 @@ pub(super) mod utils {
                     capabilities.insert(capability);
                 }
 
-                // Check if the queue priority is valid.
-                if queue_config.priority < 0.0 || queue_config.priority > 1.0 {
-                    panic!(
-                        "[pyrite_vulkan]: Queue priority value '{}' is invalid. Queue priority must be between 0.0 and 1.0.",
-                        queue_config.priority
-                    );
+                // Check if the queue priority is valid if non-exclusive.
+                if let QueuePriority::Shared(priority) = &queue_config.priority {
+                    if *priority < 0.0 || *priority > 1.0 {
+                        panic!(
+                            "[pyrite_vulkan]: Queue priority value '{}' is invalid. Queue priority must be between 0.0 and 1.0.",
+                            priority
+                        );
+                    }
                 }
 
                 // Check if the queue fallback is valid if specified.
@@ -479,19 +592,11 @@ pub(super) mod utils {
 
         // Resolve the queue definitions
         // This will map each queue family index to it's list of virtual queue configs.
-        let sorted_queue_configs = {
-            let mut queue_configs = vulkan_config.queues.clone();
-
-            // Sort the queue configs by descending priority.
-            queue_configs.sort_by(|a, b| b.priority.partial_cmp(&a.priority).unwrap());
-            queue_configs
-        };
-
         let mut queue_family_indices = HashMap::new();
         let mut virtual_queue_aliases: HashMap<String, String> = HashMap::new();
 
         let mut queue_family_count: HashMap<u32, u32> = HashMap::new();
-        for queue_config in &sorted_queue_configs {
+        for queue_config in &vulkan_config.queues {
             // Search for all the valid queue families that match the queue config.
             let valid_queue_family_indices = (0..physical_device.queue_families.len() as u32)
                 .filter(|queue_family_index| {
@@ -504,46 +609,58 @@ pub(super) mod utils {
                 })
                 .collect::<Vec<_>>();
 
-            // We will search within the queues valid queue family indices to find the queue
-            // family with the least amount of queues. If no queue family is found or there were no
-            // valid queue families, then this will return None.
-            let chosen_queue_family_index: Option<u32> = valid_queue_family_indices.iter().fold(
-                None,
-                |min_family_index: Option<u32>, current_family_index| {
-                    // Zero cost abstractions... right?
-                    let min_family_count = min_family_index
-                        .as_ref()
-                        .map(|index| {
-                            queue_family_count
-                                .get(index)
-                                .map(|qf| qf.clone())
-                                .unwrap_or(0)
-                        })
-                        .unwrap_or(0);
-                    let current_family_count = queue_family_count
-                        .get(current_family_index)
-                        .map(|qf| qf.clone())
-                        .unwrap_or(0);
+            let chosen_queue_family_index: Option<u32> = match queue_config.priority {
+                // We will search to find the first queue family that has no queues.
+                QueuePriority::Exclusive => valid_queue_family_indices
+                    .iter()
+                    .find(|queue_family_index| {
+                        queue_family_count
+                            .get(queue_family_index)
+                            .map(|qf| qf.clone())
+                            .unwrap_or(0)
+                            == 0
+                    })
+                    .map(|queue_family_index| queue_family_index.clone()),
+                // We will search to find the queue family with the least amount of queues.
+                // If no queue family is found or there were no valid queue families, then this will return None.
+                QueuePriority::Shared(_) => valid_queue_family_indices.iter().fold(
+                    None,
+                    |min_family_index: Option<u32>, current_family_index| {
+                        // Zero cost abstractions... right?
+                        let min_family_count = min_family_index
+                            .as_ref()
+                            .map(|index| {
+                                queue_family_count
+                                    .get(index)
+                                    .map(|qf| qf.clone())
+                                    .unwrap_or(0)
+                            })
+                            .unwrap_or(0);
+                        let current_family_count = queue_family_count
+                            .get(current_family_index)
+                            .map(|qf| qf.clone())
+                            .unwrap_or(0);
 
-                    // Check if the current queue family has space for another queue.
-                    if current_family_count
-                        < physical_device.queue_families[current_family_index.clone() as usize]
-                            .queue_count
-                        || current_family_count >= min_family_count
-                    {
-                        if min_family_index.is_none() {
-                            // The minimum queue family hasn't been set yet.
-                            return Some(current_family_index.clone());
-                        } else if min_family_count > current_family_count {
-                            // The current queue family has less queues than the minimum queue family.
-                            return Some(current_family_index.clone());
+                        // Check if the current queue family has space for another queue.
+                        if current_family_count
+                            < physical_device.queue_families[current_family_index.clone() as usize]
+                                .queue_count
+                            || current_family_count >= min_family_count
+                        {
+                            if min_family_index.is_none() {
+                                // The minimum queue family hasn't been set yet.
+                                return Some(current_family_index.clone());
+                            } else if min_family_count > current_family_count {
+                                // The current queue family has less queues than the minimum queue family.
+                                return Some(current_family_index.clone());
+                            }
                         }
-                    }
 
-                    // The current queue family is full or has a higher queue count than the minimum queue family.
-                    min_family_index
-                },
-            );
+                        // The current queue family is full or has a higher queue count than the minimum queue family.
+                        min_family_index
+                    },
+                ),
+            };
 
             // If no queue family was found, then use the queue config's specified resolution strategy.
             if chosen_queue_family_index.is_none() {

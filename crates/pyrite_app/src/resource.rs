@@ -16,6 +16,8 @@ pub type ResMut<'rb, R> = RefMut<'rb, R>;
 pub trait Resource: Any + Send + Sync {}
 downcast!(dyn Resource);
 
+// reemove this and just put it in the ystem param implementation because there is no need to
+// define it twice and the system param implemntation defines the dependencies.
 pub(crate) trait FromResourceBank
 where
     Self: Sized,
