@@ -80,13 +80,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4668cab20f66d8d020e1fbc0ebe47217433c1b6c8f2040faf858554e394ace6"
 
 [[package]]
-name = "app_example"
-version = "1.0.0"
-dependencies = [
- "pyrite",
-]
-
-[[package]]
 name = "arrayref"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -129,13 +122,6 @@ dependencies = [
  "ash 0.37.0+1.3.271",
  "raw-window-handle",
  "raw-window-metal",
-]
-
-[[package]]
-name = "asset_example"
-version = "1.0.0"
-dependencies = [
- "pyrite",
 ]
 
 [[package]]
@@ -444,13 +430,6 @@ name = "cursor-icon"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96a6ac251f4a2aca6b3f91340350eab87ae57c3f127ffeb585e92bd336717991"
-
-[[package]]
-name = "desktop_example"
-version = "1.0.0"
-dependencies = [
- "pyrite",
-]
 
 [[package]]
 name = "dispatch"
@@ -1457,14 +1436,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 
 [[package]]
-name = "render_manager_example"
-version = "1.0.0"
-dependencies = [
- "ash 0.37.3+1.3.251",
- "pyrite",
-]
-
-[[package]]
 name = "roxmltree"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1796,14 +1767,6 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
-
-[[package]]
-name = "vulkan_example"
-version = "1.0.0"
-dependencies = [
- "ash 0.37.3+1.3.251",
- "pyrite",
-]
 
 [[package]]
 name = "walkdir"

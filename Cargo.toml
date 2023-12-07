@@ -11,11 +11,6 @@ members = [
   "crates/pyrite_util/macros",
   "crates/pyrite_vulkan",
   "crates/pyrite_window",
-  "examples/app",
-  "examples/asset",
-  "examples/desktop",
-  "examples/render_manager",
-  "examples/vulkan",
   "pyrite",
 ]
 

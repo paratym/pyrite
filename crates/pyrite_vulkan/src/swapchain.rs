@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use pyrite_app::resource::Resource;
 
-use crate::{Vulkan, VulkanDep};
+use crate::{util::VulkanResource, Vulkan, VulkanDep};
 
 pub type SwapchainDep = Arc<SwapchainInstance>;
 
@@ -61,6 +61,8 @@ impl SwapchainInstance {
         }
     }
 }
+
+impl VulkanResource for SwapchainInstance {}
 
 impl Drop for SwapchainInstance {
     fn drop(&mut self) {

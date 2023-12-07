@@ -1,7 +1,0 @@
-[package]
-name = "asset_example"
-version = "1.0.0"
-edition = "2021"
-
-[dependencies]
-pyrite = { path = "../../pyrite" }
