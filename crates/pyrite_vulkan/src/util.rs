@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
-pub type VulkanGenericResourceDep = Arc<dyn VulkanResource>;
+pub type GenericResourceDep = Arc<dyn VulkanResource>;
 
 pub trait VulkanResource: Send + Sync + 'static {}
-pub trait GenericVulkanResourceDep {
-    fn into_generic(&self) -> VulkanGenericResourceDep;
+pub trait VulkanResourceDep {
+    fn into_generic(&self) -> GenericResourceDep;
 }
 
-impl<R> GenericVulkanResourceDep for Arc<R>
+impl<R> VulkanResourceDep for Arc<R>
 where
     R: VulkanResource,
 {
-    fn into_generic(&self) -> VulkanGenericResourceDep {
+    fn into_generic(&self) -> GenericResourceDep {
         Arc::clone(self) as Arc<dyn VulkanResource>
     }
 }

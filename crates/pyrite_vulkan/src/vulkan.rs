@@ -320,9 +320,9 @@ impl VulkanInstance {
         let (device, queues, queue_aliases) = {
             let resolved_queue_definitions =
                 utils::resolve_queue_definitions(&physical_device, &config, &surface);
-            println!(
+            dbg!(
                 "[pyrite_vulkan]: Resolved queue definitions: {:?}",
-                resolved_queue_definitions
+                &resolved_queue_definitions
             );
 
             let mut queue_definition_priorities = Vec::new();

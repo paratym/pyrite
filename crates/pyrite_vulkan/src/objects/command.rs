@@ -3,7 +3,10 @@ use std::sync::Arc;
 use ash::vk;
 use slotmap::{new_key_type, SlotMap};
 
-use crate::{util::VulkanResource, Vulkan, VulkanDep};
+use crate::{
+    util::{GenericResourceDep, VulkanResource},
+    Vulkan, VulkanDep,
+};
 
 new_key_type! {
     pub struct CommandBufferHandle;
@@ -12,6 +15,7 @@ new_key_type! {
 pub struct CommandBuffer {
     vulkan_dep: VulkanDep,
     command_buffer: ash::vk::CommandBuffer,
+    recorded_dependencies: Vec<GenericResourceDep>,
 }
 
 impl CommandBuffer {
@@ -36,7 +40,11 @@ impl CommandBuffer {
         }
     }
 
-    pub unsafe fn command_buffer(&self) -> ash::vk::CommandBuffer {
+    pub fn take_recorded_dependencies(&mut self) -> Vec<GenericResourceDep> {
+        std::mem::take(&mut self.recorded_dependencies)
+    }
+
+    pub fn command_buffer(&self) -> ash::vk::CommandBuffer {
         self.command_buffer
     }
 }
@@ -87,8 +95,31 @@ impl CommandPool {
         }
     }
 
-    pub fn get(&mut self, handle: CommandBufferHandle) -> Option<&mut CommandBuffer> {
+    pub fn get(&self, handle: CommandBufferHandle) -> Option<&CommandBuffer> {
+        self.command_buffers.get(handle)
+    }
+
+    pub fn get_multiple(&self, handles: Vec<CommandBufferHandle>) -> Vec<&CommandBuffer> {
+        self.command_buffers
+            .iter()
+            .filter(|(handle, _)| handles.iter().any(|h| h == handle))
+            .map(|(_, command_buffer)| command_buffer)
+            .collect()
+    }
+
+    pub fn get_mut(&mut self, handle: CommandBufferHandle) -> Option<&mut CommandBuffer> {
         self.command_buffers.get_mut(handle)
+    }
+
+    pub fn get_multiple_mut(
+        &mut self,
+        handles: Vec<CommandBufferHandle>,
+    ) -> Vec<&mut CommandBuffer> {
+        self.command_buffers
+            .iter_mut()
+            .filter(|(handle, _)| handles.iter().any(|h| h == handle))
+            .map(|(_, command_buffer)| command_buffer)
+            .collect()
     }
 
     pub fn reset(&mut self) {
@@ -121,6 +152,7 @@ impl CommandPool {
         .map(|command_buffer| CommandBuffer {
             vulkan_dep: self.instance.vulkan_dep.clone(),
             command_buffer,
+            recorded_dependencies: Vec::new(),
         })
         .collect::<Vec<_>>();
 
