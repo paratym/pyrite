@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
 use ash::vk;
 
@@ -10,13 +10,19 @@ use util::ImageViewCreateInfo;
 
 pub type ImageDep = Arc<dyn ImageInstance>;
 
-pub trait GenericImageDep {
-    fn into_generic_image(&self) -> ImageDep;
+pub trait Image {
+    fn instance(&self) -> &dyn ImageInstance;
+    fn create_dep(&self) -> ImageDep;
+    fn create_generic_dep(&self) -> GenericResourceDep;
 }
 
-pub trait ImageInstance: Send + Sync + 'static {
+pub trait ImageInstance: VulkanResource + Send + Sync + 'static {
     fn image(&self) -> vk::Image;
     fn image_view(&self) -> Option<vk::ImageView>;
+}
+
+pub trait GenericImageDep {
+    fn into_generic_image(&self) -> ImageDep;
 }
 
 impl<R> GenericImageDep for Arc<R>
@@ -27,8 +33,6 @@ where
         Arc::clone(self) as Arc<dyn ImageInstance>
     }
 }
-
-impl<R> VulkanResource for R where R: ImageInstance {}
 
 pub struct OwnedImageInstance {
     vulkan_dep: VulkanDep,
@@ -45,6 +49,8 @@ impl ImageInstance for OwnedImageInstance {
         self.image_view
     }
 }
+
+impl VulkanResource for OwnedImageInstance {}
 
 impl Drop for OwnedImageInstance {
     fn drop(&mut self) {
@@ -129,8 +135,18 @@ impl OwnedImage {
             }),
         }
     }
+}
 
-    pub fn create_dep(&self) -> ImageDep {
+impl Image for OwnedImage {
+    fn instance(&self) -> &dyn ImageInstance {
+        self.instance.as_ref()
+    }
+
+    fn create_dep(&self) -> ImageDep {
+        self.instance.clone()
+    }
+
+    fn create_generic_dep(&self) -> GenericResourceDep {
         self.instance.clone()
     }
 }
@@ -151,6 +167,8 @@ impl ImageInstance for BorrowedImageInstance {
     }
 }
 
+impl VulkanResource for BorrowedImageInstance {}
+
 pub struct BorrowedImage {
     instance: Arc<BorrowedImageInstance>,
 }
@@ -170,9 +188,46 @@ impl BorrowedImage {
             }),
         }
     }
+}
 
-    pub fn create_dep(&self) -> ImageDep {
+impl Image for BorrowedImage {
+    fn instance(&self) -> &dyn ImageInstance {
+        self.instance.as_ref()
+    }
+
+    fn create_dep(&self) -> ImageDep {
         self.instance.clone()
+    }
+
+    fn create_generic_dep(&self) -> GenericResourceDep {
+        self.instance.borrowed_dep.clone()
+    }
+}
+
+pub struct ImageMemoryBarrier<'a> {
+    pub image: &'a dyn Image,
+    pub old_layout: vk::ImageLayout,
+    pub new_layout: vk::ImageLayout,
+    pub src_access_mask: vk::AccessFlags,
+    pub dst_access_mask: vk::AccessFlags,
+}
+
+impl<'a> Into<vk::ImageMemoryBarrier<'a>> for ImageMemoryBarrier<'a> {
+    fn into(self) -> vk::ImageMemoryBarrier<'a> {
+        vk::ImageMemoryBarrier::default()
+            .image(self.image.instance().image())
+            .old_layout(self.old_layout)
+            .new_layout(self.new_layout)
+            .src_access_mask(self.src_access_mask)
+            .dst_access_mask(self.dst_access_mask)
+            .subresource_range(
+                vk::ImageSubresourceRange::default()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .base_mip_level(0)
+                    .level_count(1)
+                    .base_array_layer(0)
+                    .layer_count(1),
+            )
     }
 }
 

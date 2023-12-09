@@ -4,9 +4,11 @@ use ash::vk;
 use slotmap::{new_key_type, SlotMap};
 
 use crate::{
-    util::{GenericResourceDep, VulkanResource},
+    util::{VulkanResource, VulkanResourceDep, WeakGenericResourceDep},
     Vulkan, VulkanDep,
 };
+
+use super::ImageMemoryBarrier;
 
 new_key_type! {
     pub struct CommandBufferHandle;
@@ -14,12 +16,16 @@ new_key_type! {
 
 pub struct CommandBuffer {
     vulkan_dep: VulkanDep,
+    command_pool: std::sync::Weak<CommandPoolInstance>,
     command_buffer: ash::vk::CommandBuffer,
-    recorded_dependencies: Vec<GenericResourceDep>,
+    recorded_dependencies: Vec<WeakGenericResourceDep>,
 }
 
 impl CommandBuffer {
     pub fn begin(&mut self) {
+        self.recorded_dependencies
+            .push(self.command_pool.into_generic_weak());
+
         let command_buffer_begin_info = vk::CommandBufferBeginInfo::default()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
@@ -40,7 +46,35 @@ impl CommandBuffer {
         }
     }
 
-    pub fn take_recorded_dependencies(&mut self) -> Vec<GenericResourceDep> {
+    pub fn pipeline_barrier(
+        &mut self,
+        src_stage: vk::PipelineStageFlags,
+        dst_stage: vk::PipelineStageFlags,
+        image_memory_barriers: Vec<ImageMemoryBarrier>,
+    ) {
+        self.recorded_dependencies
+            .extend(image_memory_barriers.iter().map(|image_memory_barrier| {
+                Arc::downgrade(&image_memory_barrier.image.create_generic_dep())
+            }));
+        let vk_image_memory_barriers = image_memory_barriers
+            .into_iter()
+            .map(|image_memory_barrier| image_memory_barrier.into())
+            .collect::<Vec<_>>();
+
+        unsafe {
+            self.vulkan_dep.device().cmd_pipeline_barrier(
+                self.command_buffer,
+                src_stage,
+                dst_stage,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &vk_image_memory_barriers,
+            );
+        }
+    }
+
+    pub fn take_recorded_dependencies(&mut self) -> Vec<WeakGenericResourceDep> {
         std::mem::take(&mut self.recorded_dependencies)
     }
 
@@ -151,6 +185,7 @@ impl CommandPool {
         .into_iter()
         .map(|command_buffer| CommandBuffer {
             vulkan_dep: self.instance.vulkan_dep.clone(),
+            command_pool: Arc::downgrade(&self.instance),
             command_buffer,
             recorded_dependencies: Vec::new(),
         })

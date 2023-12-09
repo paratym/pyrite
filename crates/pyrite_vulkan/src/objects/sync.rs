@@ -81,6 +81,10 @@ impl Fence {
     pub fn fence(&self) -> vk::Fence {
         self.instance.fence
     }
+
+    pub fn create_dep(&self) -> FenceDep {
+        self.instance.clone()
+    }
 }
 
 pub type SemaphoreDep = Arc<SemaphoreInstance>;
@@ -130,5 +134,9 @@ impl Semaphore {
 
     pub fn semaphore(&self) -> vk::Semaphore {
         self.instance.semaphore
+    }
+
+    pub fn create_dep(&self) -> SemaphoreDep {
+        self.instance.clone()
     }
 }

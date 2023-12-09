@@ -2,7 +2,7 @@ use ash::vk;
 
 use crate::objects::{CommandBuffer, Fence, Semaphore};
 use crate::swapchain::Swapchain;
-use crate::util::GenericResourceDep;
+use crate::util::{GenericResourceDep, VulkanResourceDep};
 use crate::VulkanQueue;
 
 /// A queue exectutor keeps track of in flight frame resources.
@@ -42,11 +42,27 @@ impl<const N: usize> QueueExecutor<N> {
     }
 
     pub fn submit(&mut self, mut info: QueueExecutorSubmitInfo) {
-        self.in_flight_dependencies[info.frame_index as usize].extend(
+        let in_flight_dependencies = &mut self.in_flight_dependencies[info.frame_index as usize];
+        in_flight_dependencies.extend(
             info.command_buffers
                 .iter_mut()
-                .flat_map(|command_buffer| command_buffer.take_recorded_dependencies()),
+                .flat_map(|command_buffer| command_buffer.take_recorded_dependencies()
+                    .into_iter()
+                    .map(|weak_dep| weak_dep.upgrade().expect("Tried to submit a command buffer with a dependency that was already dropped."))),
         );
+        in_flight_dependencies.extend(
+            info.wait_semaphores
+                .iter()
+                .map(|(semaphore, _)| semaphore.create_dep().into_generic()),
+        );
+        in_flight_dependencies.extend(
+            info.signal_semaphores
+                .iter()
+                .map(|semaphore| semaphore.create_dep().into_generic()),
+        );
+        if let Some(fence) = info.fence {
+            in_flight_dependencies.push(fence.create_dep().into_generic());
+        }
 
         let vk_command_buffers = info
             .command_buffers
@@ -108,7 +124,15 @@ impl<const N: usize> QueueExecutor<N> {
                 .swapchain_loader()
                 .queue_present(self.queue().queue(), &present_info)
         };
-        dbg!(present_result);
+    }
+
+    pub fn wait_idle(&self) {
+        unsafe {
+            self.vulkan_dep
+                .device()
+                .queue_wait_idle(self.queue().queue())
+                .expect("Failed to wait for queue to become idle.");
+        }
     }
 
     fn queue(&self) -> &VulkanQueue {
