@@ -23,3 +23,11 @@ impl SystemScheduler for LinearSystemScheduler {
         }
     }
 }
+
+pub struct ScheduleExecutor {}
+
+impl ScheduleExecutor {
+    pub fn new() -> Self {
+        Self {}
+    }
+}

@@ -11,6 +11,7 @@ members = [
   "crates/pyrite_util/macros",
   "crates/pyrite_vulkan",
   "crates/pyrite_window",
+  "examples/app",
   "pyrite",
 ]
 

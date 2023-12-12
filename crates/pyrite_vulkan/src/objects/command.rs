@@ -8,7 +8,7 @@ use crate::{
     Vulkan, VulkanDep,
 };
 
-use super::ImageMemoryBarrier;
+use super::{Image, ImageMemoryBarrier};
 
 new_key_type! {
     pub struct CommandBufferHandle;
@@ -70,6 +70,26 @@ impl CommandBuffer {
                 &[],
                 &[],
                 &vk_image_memory_barriers,
+            );
+        }
+    }
+
+    pub fn clear_color_image(
+        &mut self,
+        image: &dyn Image,
+        clear_color: vk::ClearColorValue,
+        subresource_range: vk::ImageSubresourceRange,
+    ) {
+        self.recorded_dependencies
+            .push(Arc::downgrade(&image.create_generic_dep()));
+
+        unsafe {
+            self.vulkan_dep.device().cmd_clear_color_image(
+                self.command_buffer,
+                image.instance().image(),
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &clear_color,
+                &[subresource_range],
             );
         }
     }

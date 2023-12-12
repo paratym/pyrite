@@ -57,18 +57,18 @@ pub struct ResourceBank {
 }
 
 impl ResourceBank {
-    pub(crate) fn new(resources: HashMap<TypeId, RefCell<BoxedResource>>) -> Self {
+    pub fn new(resources: HashMap<TypeId, RefCell<BoxedResource>>) -> Self {
         Self { resources }
     }
 
-    pub(crate) fn get_resource<R: Resource>(&self) -> Res<R> {
+    pub fn get_resource<R: Resource>(&self) -> Res<R> {
         Ref::map(
             self.resources.get(&TypeId::of::<R>()).unwrap().borrow(),
             |r| r.downcast_ref().unwrap(),
         )
     }
 
-    pub(crate) fn get_resource_mut<R: Resource>(&self) -> ResMut<R>
+    pub fn get_resource_mut<R: Resource>(&self) -> ResMut<R>
     where
         R: Resource,
     {

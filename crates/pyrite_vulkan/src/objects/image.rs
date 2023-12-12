@@ -1,8 +1,9 @@
-use std::{ops::Deref, sync::Arc};
+use std::sync::Arc;
 
 use ash::vk;
 
 use crate::{
+    allocator::{MemoryAllocation, VulkanAllocationInfo, VulkanMemoryAllocator},
     util::{GenericResourceDep, VulkanResource, VulkanResourceDep},
     Vulkan, VulkanDep,
 };
@@ -38,6 +39,13 @@ pub struct OwnedImageInstance {
     vulkan_dep: VulkanDep,
     image: vk::Image,
     image_view: Option<vk::ImageView>,
+    allocation: MemoryAllocation,
+}
+
+impl OwnedImageInstance {
+    pub fn allocation(&self) -> &MemoryAllocation {
+        &self.allocation
+    }
 }
 
 impl ImageInstance for OwnedImageInstance {
@@ -80,7 +88,11 @@ pub struct OwnedImageCreateInfo {
 }
 
 impl OwnedImage {
-    pub fn new(vulkan: &Vulkan, info: &OwnedImageCreateInfo) -> Self {
+    pub fn new(
+        vulkan: &Vulkan,
+        vulkan_allocator: &mut VulkanMemoryAllocator,
+        info: &OwnedImageCreateInfo,
+    ) -> Self {
         let image_create_info = vk::ImageCreateInfo::default()
             .image_type(info.image_type)
             .extent(vk::Extent3D {
@@ -104,7 +116,13 @@ impl OwnedImage {
                 .expect("Failed to create image")
         };
 
-        todo!("Allocate memory.");
+        let memory_requirements = unsafe { vulkan.device().get_image_memory_requirements(image) };
+
+        let memory_allocation = vulkan_allocator.allocate(&VulkanAllocationInfo {
+            size: memory_requirements.size,
+            memory_proprties: vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            memory_type_bits: memory_requirements.memory_type_bits,
+        });
 
         let image_view = match &info.view_create_info {
             Some(view_create_info) => {
@@ -132,6 +150,7 @@ impl OwnedImage {
                 vulkan_dep: vulkan.create_dep(),
                 image,
                 image_view,
+                allocation: memory_allocation,
             }),
         }
     }

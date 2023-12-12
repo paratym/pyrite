@@ -11,7 +11,7 @@ pub enum ResourceDependency {
 
 type SystemParamItem<'rb, P> = <P as SystemParam>::Item<'rb>;
 
-trait SystemParam {
+pub trait SystemParam {
     type Item<'rb>: SystemParam;
 
     fn from_resource_bank(resource_bank: &ResourceBank) -> Self::Item<'_>;
@@ -53,9 +53,9 @@ where
     }
 }
 
-pub(crate) type BoxedSystem = Box<dyn System>;
+pub type BoxedSystem = Box<dyn System>;
 
-pub(crate) trait System {
+pub trait System {
     fn run(&mut self, resource_bank: &ResourceBank);
     fn name(&self) -> &'static str;
     fn dependencies(&self) -> Vec<ResourceDependency>;
@@ -69,7 +69,7 @@ pub trait SystemFunctionHandler<M> {
     fn dependencies() -> Vec<ResourceDependency>;
 }
 
-pub(crate) struct SystemFunction<M, F: SystemFunctionHandler<M>> {
+pub struct SystemFunction<M, F: SystemFunctionHandler<M>> {
     f: F,
     _marker: std::marker::PhantomData<fn(M) -> ()>,
 }

@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    cmp::{max, min},
+    sync::Arc,
+};
 
 use ash::vk;
 use pyrite_app::resource::Resource;
@@ -8,7 +11,7 @@ use crate::{
         image::{self, util::ImageViewCreateInfo, BorrowedImageCreateInfo},
         BorrowedImage, Semaphore,
     },
-    util::VulkanResource,
+    util::{Extent2D, VulkanResource},
     Vulkan, VulkanDep,
 };
 
@@ -22,7 +25,23 @@ struct SwapchainInstanceInternal {
 
 impl VulkanResource for SwapchainInstanceInternal {}
 
+pub struct SwapchainInfo {
+    extent: Extent2D,
+    format: vk::Format,
+}
+
+impl SwapchainInfo {
+    pub fn extent(&self) -> &Extent2D {
+        &self.extent
+    }
+
+    pub fn format(&self) -> vk::Format {
+        self.format
+    }
+}
+
 pub struct SwapchainInstance {
+    info: SwapchainInfo,
     swapchain: Arc<SwapchainInstanceInternal>,
     images: Vec<BorrowedImage>,
 }
@@ -30,7 +49,10 @@ pub struct SwapchainInstance {
 pub struct SwapchainCreateInfo {
     pub width: u32,
     pub height: u32,
-    pub present_mode: ash::vk::PresentModeKHR,
+    pub preferred_present_mode: ash::vk::PresentModeKHR,
+    pub preferred_image_count: u32,
+    pub image_usage: ash::vk::ImageUsageFlags,
+    pub create_image_views: bool,
 }
 
 impl SwapchainInstance {
@@ -53,10 +75,42 @@ impl SwapchainInstance {
                 )
                 .expect("Failed to get supported surface formats")
         };
+        let supported_present_modes = unsafe {
+            surface
+                .loader()
+                .get_physical_device_surface_present_modes(
+                    vulkan.physical_device().physical_device(),
+                    surface.surface(),
+                )
+                .expect("Failed to get supported surface present modes")
+        };
+        let surface_capabilities = unsafe {
+            surface
+                .loader()
+                .get_physical_device_surface_capabilities(
+                    vulkan.physical_device().physical_device(),
+                    surface.surface(),
+                )
+                .expect("Failed to get supported surface capabilities")
+        };
 
-        let swapchain_format = supported_surface_formats
+        let format = supported_surface_formats
             .first()
             .expect("No supported formats found for the swapchain.");
+
+        let image_count = min(
+            max(
+                surface_capabilities.min_image_count,
+                info.preferred_image_count,
+            ),
+            surface_capabilities.max_image_count,
+        );
+
+        let present_mode = if supported_present_modes.contains(&info.preferred_present_mode) {
+            info.preferred_present_mode
+        } else {
+            ash::vk::PresentModeKHR::FIFO
+        };
 
         let swapchain = {
             let swapchain_loader =
@@ -65,19 +119,19 @@ impl SwapchainInstance {
                 swapchain_loader.create_swapchain(
                     &ash::vk::SwapchainCreateInfoKHR::default()
                         .surface(vulkan.surface().as_ref().unwrap().surface())
-                        .min_image_count(2)
+                        .min_image_count(image_count)
                         .image_array_layers(1)
-                        .image_color_space(swapchain_format.color_space)
-                        .image_format(swapchain_format.format)
+                        .image_color_space(format.color_space)
+                        .image_format(format.format)
                         .image_extent(ash::vk::Extent2D {
                             width: info.width,
                             height: info.height,
                         })
-                        .image_usage(ash::vk::ImageUsageFlags::COLOR_ATTACHMENT)
+                        .image_usage(info.image_usage)
                         .image_sharing_mode(ash::vk::SharingMode::EXCLUSIVE)
                         .pre_transform(ash::vk::SurfaceTransformFlagsKHR::IDENTITY)
                         .composite_alpha(ash::vk::CompositeAlphaFlagsKHR::OPAQUE)
-                        .present_mode(info.present_mode)
+                        .present_mode(present_mode)
                         .clipped(true)
                         .old_swapchain(old_swapchain.unwrap_or(ash::vk::SwapchainKHR::null())),
                     None,
@@ -100,33 +154,45 @@ impl SwapchainInstance {
         .expect("Failed to get swapchain images")
         .into_iter()
         .map(|image| {
-            let image_view = image::util::create_image_view(
-                vulkan,
-                image,
-                swapchain_format.format,
-                ImageViewCreateInfo {
-                    view_type: vk::ImageViewType::TYPE_2D,
-                    subresource_range: vk::ImageSubresourceRange {
-                        aspect_mask: vk::ImageAspectFlags::COLOR,
-                        base_mip_level: 0,
-                        level_count: 1,
-                        base_array_layer: 0,
-                        layer_count: 1,
-                    },
-                },
-            );
-
-            BorrowedImage::new(
-                &swapchain,
-                &BorrowedImageCreateInfo {
+            let image_view = if info.create_image_views {
+                Some(image::util::create_image_view(
+                    vulkan,
                     image,
-                    image_view: Some(image_view),
-                },
-            )
+                    format.format,
+                    ImageViewCreateInfo {
+                        view_type: vk::ImageViewType::TYPE_2D,
+                        subresource_range: vk::ImageSubresourceRange {
+                            aspect_mask: vk::ImageAspectFlags::COLOR,
+                            base_mip_level: 0,
+                            level_count: 1,
+                            base_array_layer: 0,
+                            layer_count: 1,
+                        },
+                    },
+                ))
+            } else {
+                None
+            };
+
+            BorrowedImage::new(&swapchain, &BorrowedImageCreateInfo { image, image_view })
         })
         .collect();
 
-        Self { swapchain, images }
+        Self {
+            info: SwapchainInfo {
+                extent: Extent2D {
+                    width: info.width,
+                    height: info.height,
+                },
+                format: format.format,
+            },
+            swapchain,
+            images,
+        }
+    }
+
+    pub fn info(&self) -> &SwapchainInfo {
+        &self.info
     }
 
     pub fn swapchain_loader(&self) -> &ash::extensions::khr::Swapchain {
@@ -177,24 +243,36 @@ impl Swapchain {
         )));
     }
 
-    pub fn get_next_image_index(&self, signal_semaphore: &Semaphore) -> u32 {
+    pub fn get_next_image_index(
+        &self,
+        signal_semaphore: &Semaphore,
+    ) -> Result<u32, SwapchainError> {
         let swapchain = self.instance.as_ref().unwrap();
-        let (index, is_suboptimal) = unsafe {
-            swapchain
-                .swapchain_loader()
-                .acquire_next_image(
-                    swapchain.swapchain(),
-                    std::u64::MAX,
-                    signal_semaphore.semaphore(),
-                    vk::Fence::null(),
-                )
-                .expect("Failed to acquire next image")
+        let result = unsafe {
+            swapchain.swapchain_loader().acquire_next_image(
+                swapchain.swapchain(),
+                std::u64::MAX,
+                signal_semaphore.semaphore(),
+                vk::Fence::null(),
+            )
         };
 
-        index
+        match result {
+            Ok((image_index, _)) => Ok(image_index),
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => Err(SwapchainError::OutOfDate),
+            Err(vk::Result::SUBOPTIMAL_KHR) => Err(SwapchainError::SubOptimal),
+            Err(_) => Err(SwapchainError::Unknown),
+        }
     }
 
     pub fn instance(&self) -> &Arc<SwapchainInstance> {
         self.instance.as_ref().unwrap()
     }
+}
+
+#[derive(Debug)]
+pub enum SwapchainError {
+    OutOfDate,
+    SubOptimal,
+    Unknown,
 }
