@@ -6,3 +6,5 @@ edition = "2021"
 [dependencies]
 pyrite_app_macros = { path = "macros" }
 downcast = "0.11.0"
+rayon = "1.8.0"
+parking_lot = "0.12.1"

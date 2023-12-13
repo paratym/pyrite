@@ -4,15 +4,18 @@ use std::{
     collections::HashMap,
 };
 
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
 use crate::{
     executor::ScheduleExecutor,
+    prelude::ResMut,
     resource::{BoxedResource, Res, Resource, ResourceBank},
     schedule::Schedule,
     system::SystemFunctionHandler,
 };
 
 pub struct AppBuilder {
-    resources: HashMap<TypeId, RefCell<BoxedResource>>,
+    resources: HashMap<TypeId, RwLock<BoxedResource>>,
     schedule: Option<Schedule>,
     entry_point: Option<Box<dyn FnOnce(Application)>>,
 }
@@ -28,23 +31,23 @@ impl AppBuilder {
 
     pub fn add_resource<R: Resource>(&mut self, resource: R) -> &mut Self {
         self.resources
-            .insert(TypeId::of::<R>(), RefCell::new(Box::new(resource)));
+            .insert(TypeId::of::<R>(), RwLock::new(Box::new(resource)));
         self
     }
 
     pub fn get_resource<R: Resource>(&self) -> Res<R> {
-        Ref::map(
-            self.resources.get(&TypeId::of::<R>()).unwrap().borrow(),
+        RwLockReadGuard::map(
+            self.resources.get(&TypeId::of::<R>()).unwrap().read(),
             |r| r.downcast_ref().unwrap(),
         )
     }
 
-    pub fn get_resource_mut<R: Resource>(&self) -> RefMut<R>
+    pub fn get_resource_mut<R: Resource>(&self) -> ResMut<R>
     where
         R: Resource,
     {
-        RefMut::map(
-            self.resources.get(&TypeId::of::<R>()).unwrap().borrow_mut(),
+        RwLockWriteGuard::map(
+            self.resources.get(&TypeId::of::<R>()).unwrap().write(),
             |r| r.downcast_mut().unwrap(),
         )
     }
@@ -82,9 +85,12 @@ impl Application {
         self.resource_bank.get_resource()
     }
 
-    pub fn get_resource_mut<R: Resource>(&self) -> RefMut<R> {
+    pub fn get_resource_mut<R: Resource>(&self) -> ResMut<R> {
         self.resource_bank.get_resource_mut()
     }
 
-    pub fn execute_schedule(&mut self) {}
+    pub fn execute_schedule(&mut self) {
+        self.schedule_executor
+            .execute(&mut self.schedule, &self.resource_bank);
+    }
 }

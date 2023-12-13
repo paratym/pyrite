@@ -1,4 +1,4 @@
-use crate::{resource::ResourceBank, stage::Stage};
+use crate::{resource::ResourceBank, schedule::Schedule, stage::Stage};
 
 pub trait SystemScheduler {
     fn execute_stage(&mut self, stage: &mut Stage, resource_bank: &ResourceBank);
@@ -24,10 +24,23 @@ impl SystemScheduler for LinearSystemScheduler {
     }
 }
 
-pub struct ScheduleExecutor {}
+pub struct ScheduleExecutor {
+    threads: rayon::ThreadPool,
+}
 
 impl ScheduleExecutor {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            threads: rayon::ThreadPoolBuilder::new().build().unwrap(),
+        }
+    }
+
+    pub fn execute(&mut self, schedule: &mut Schedule, resource_bank: &ResourceBank) {
+        for system in schedule.systems_mut() {
+            self.threads.install(|| {
+                // println!("[pyrite_app]: Executing system - {}", system.name());
+                system.run(resource_bank);
+            });
+        }
     }
 }

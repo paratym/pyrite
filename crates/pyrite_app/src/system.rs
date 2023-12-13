@@ -55,13 +55,13 @@ where
 
 pub type BoxedSystem = Box<dyn System>;
 
-pub trait System {
+pub trait System: Send {
     fn run(&mut self, resource_bank: &ResourceBank);
     fn name(&self) -> &'static str;
     fn dependencies(&self) -> Vec<ResourceDependency>;
 }
 
-pub trait SystemFunctionHandler<M> {
+pub trait SystemFunctionHandler<M>: Send {
     fn handle(&mut self, resource_bank: &ResourceBank);
     fn name() -> &'static str {
         std::any::type_name::<Self>()
@@ -104,7 +104,7 @@ macro_rules! impl_system_function_handler {
     ($($param:ident),*) => {
         impl<F, $($param: SystemParam),*> SystemFunctionHandler<fn($($param),*) -> ()> for F
         where
-            F: FnMut($($param),*) + FnMut($(SystemParamItem<$param>),*),
+            F: FnMut($($param),*) + FnMut($(SystemParamItem<$param>),*) + Send,
         {
             fn handle(&mut self, _resource_bank: &ResourceBank) {
                 // Function needs to be generified again since rust can't infer the type correctly.
