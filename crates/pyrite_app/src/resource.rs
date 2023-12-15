@@ -1,8 +1,4 @@
-use std::{
-    any::TypeId,
-    cell::{Ref, RefCell, RefMut},
-    collections::HashMap,
-};
+use std::{any::TypeId, collections::HashMap};
 
 use downcast::{downcast, Any};
 
@@ -38,7 +34,10 @@ where
             resource_bank
                 .resources
                 .get(&TypeId::of::<R>())
-                .unwrap()
+                .expect(&format!(
+                    "Resource {} is not in the resource bank.",
+                    std::any::type_name::<R>()
+                ))
                 .read(),
             |r| r.downcast_ref().unwrap(),
         )
@@ -48,7 +47,10 @@ where
             resource_bank
                 .resources
                 .get(&TypeId::of::<R>())
-                .unwrap()
+                .expect(&format!(
+                    "Resource {} is not in the resource bank.",
+                    std::any::type_name::<R>()
+                ))
                 .write(),
             |r| r.downcast_mut().unwrap(),
         )

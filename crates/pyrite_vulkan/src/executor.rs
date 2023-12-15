@@ -124,6 +124,11 @@ impl<const N: usize> QueueExecutor<N> {
                 .swapchain_loader()
                 .queue_present(self.queue().queue(), &present_info)
         };
+        if let Err(present_error) = present_result {
+            match present_error {
+                _ => panic!("Unknown error occured when presenting to the swapchain."),
+            }
+        }
     }
 
     pub fn wait_idle(&self) {

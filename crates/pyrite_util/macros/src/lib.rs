@@ -9,8 +9,8 @@ use quote::quote;
 use syn::{
     parse::{Parse, ParseStream},
     parse_macro_input,
-    token::{self, Comma},
-    Attribute, DataStruct, DeriveInput, Fields, LitInt, Result, Token, Visibility, WhereClause,
+    token::{self},
+    Attribute, DataStruct, Fields, Result, Token, Visibility, WhereClause,
 };
 
 fn get_calling_crate() -> String {
@@ -42,7 +42,7 @@ impl Parse for DependableStruct {
         if lookahead.peek(Token![struct]) {
             let struct_token = input.parse::<Token![struct]>()?;
             let name = input.parse::<Ident>()?;
-            let (where_clause, fields, semi) = data_struct(input)?;
+            let (_where_clause, fields, semi) = data_struct(input)?;
             Ok(DependableStruct {
                 name,
                 visibility,

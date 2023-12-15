@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 pyrite_app = { path = "../pyrite_app" }
+pyrite_input = { path = "../pyrite_input" }
 winit = "0.29.4"
 raw-window-handle = "0.6.0"
 

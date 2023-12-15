@@ -1,8 +1,4 @@
-use std::{
-    any::TypeId,
-    cell::{Ref, RefCell, RefMut},
-    collections::HashMap,
-};
+use std::{any::TypeId, collections::HashMap};
 
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
@@ -11,7 +7,6 @@ use crate::{
     prelude::ResMut,
     resource::{BoxedResource, Res, Resource, ResourceBank},
     schedule::Schedule,
-    system::SystemFunctionHandler,
 };
 
 pub struct AppBuilder {

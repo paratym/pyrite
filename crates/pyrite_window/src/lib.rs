@@ -1,3 +1,4 @@
+pub mod util;
 mod window;
 
 pub use window::*;

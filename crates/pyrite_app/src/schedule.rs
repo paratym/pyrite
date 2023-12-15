@@ -1,6 +1,6 @@
 use std::{any::TypeId, collections::HashMap};
 
-use crate::system::{BoxedSystem, SystemFunction, SystemFunctionHandler, SystemParam};
+use crate::system::{BoxedSystem, SystemFunction, SystemFunctionHandler};
 
 pub struct ScheduleSystemConfig {
     name: String,

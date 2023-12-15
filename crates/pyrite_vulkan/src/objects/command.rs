@@ -10,9 +10,7 @@ use crate::{
 
 use super::{Image, ImageMemoryBarrier};
 
-new_key_type! {
-    pub struct CommandBufferHandle;
-}
+new_key_type! { pub struct CommandBufferHandle; }
 
 pub struct CommandBuffer {
     vulkan_dep: VulkanDep,
